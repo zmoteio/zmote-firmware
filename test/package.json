@@ -1,0 +1,25 @@
+{
+  "name": "zmote-test",
+  "version": "1.0.0",
+  "description": "Test scripts.  Mainly for firmware",
+  "main": "learn.js",
+  "dependencies": {
+    "axios": "^0.5.4",
+    "crc-32": "^0.3.0",
+    "deasync": "^0.1.0",
+    "lodash": "^3.10.0",
+    "mongoose": "^4.0.8",
+    "mosca": "^0.30.3",
+    "mqtt": "^1.4.0",
+    "node-static": "^0.7.7",
+    "q": "^1.4.1",
+    "sprintf-js": "^1.0.2",
+    "yargs": "^3.15.0"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC"
+}

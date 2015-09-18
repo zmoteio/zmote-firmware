@@ -1,32 +1,14 @@
-# Object files
-*.o
-*.ko
-*.obj
-*.elf
-
-# Precompiled Headers
-*.gch
-*.pch
-
-# Libraries
-*.lib
-*.a
-*.la
-*.lo
-
-# Shared objects (inc. Windows DLLs)
-*.dll
-*.so
-*.so.*
-*.dylib
-
-# Executables
-*.exe
-*.out
-*.app
-*.i*86
-*.x86_64
-*.hex
-
-# Debug files
-*.dSYM/
+build/
+firmware/
+html/
+espfs/mkespfsimage/*.o
+espfs/mkespfsimage/mkespfsimage
+webpages.espfs
+espfs/espfstest/*.o
+espfs/espfstest/espfstest
+*.DS_Store
+html_compressed/
+npm-debug.log
+test/.client_auth
+test/*.bin
+*.bak
