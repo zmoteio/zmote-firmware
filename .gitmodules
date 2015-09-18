@@ -1,12 +1,12 @@
 [submodule "libesphttpd"]
 	path = libesphttpd
-	url = git@bitbucket.org:klarsys/libesphttpd.git
+	url = https://github.com/zmoteio/libesphttpd.git
 [submodule "libmqtt"]
 	path = libmqtt
-	url = git@bitbucket.org:klarsys/libmqtt.git
+	url = https://github.com/zmoteio/libmqtt.git
 [submodule "test/zmote-dbmodels"]
 	path = test/zmote-dbmodels
-	url = git@bitbucket.org:klarsys/zmote-dbmodels.git
+	url = https://github.com/zmoteio/zmote-dbmodels.git
 [submodule "frontend"]
 	path = frontend
 	url = git@bitbucket.org:klarsys/zmote-frontend.git
