@@ -132,7 +132,12 @@ $(FW_BASE):
 
 fs: $(FS_TAB)
 
-$(FS_TAB): $(FW_BASE) force
+zfs/node_modules: zfs/package.json
+	cd zfs && npm install
+frontend/node_modules: frontend/package.json
+	cd frontend && npm install
+
+$(FS_TAB): $(FW_BASE) zfs/node_modules  frontend/node_modules force
 	$(Q) mkdir -p $(WEB_DIR) && cd frontend && gulp widget-files
 	$(Q) node zfs/zfs.js --outdir=$(FW_BASE) --fstab=$@ $(WEB_DIR)
 
