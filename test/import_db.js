@@ -2,7 +2,7 @@ var argv = require('yargs')
     //.default('db', 'mongodb://localhost/zmote-server-dev')
     .default('url', 'http://zmote.herokuapp.com/')
     .default('herokuApp', 'zmote')
-    .default('jdb', 'import.json')
+    .default('jdb', './remotes.json')
     .argv; // flash, bless, ssid, listvar Q = require('q');
 
 var Q = require('q');
@@ -17,24 +17,18 @@ var sleep = require('deasync')(function(timeout, done) {
 require('./zmote-dbmodels/remote.server.model.js');
 var Remote = mongoose.model('Remote');
 
-//var j = fs.readFileSync("import.json").toString().replace(/\n+/g, ",");
-//console.log(j);
-//var db = JSON.parse('[' + j + '{}]');
-var lines = fs.readFileSync(argv.jdb).toString().split(/\n/);
-console.log("Lines="+lines.length);
+var remotes = require(argv.jdb);
+console.log(remotes.length + ' remotes to import');
 var n = 0;
 var rec;
 function saveNext() {
 	if (!rec) {
-		if (lines.length == 0) {
+		if (remotes.length == 0) {
 			console.log("Finished");
 			process.exit(0);
 		}
-		var ln = lines.shift();
-		if (!ln.match(/model/))
-			process.exit(0);
-		//console.log("ln", lines);
-		rec = new Remote(JSON.parse(ln));
+		var remote = remotes.shift();
+		rec = new Remote(remote);
 		console.log("Saving:", ++n);
 	} else
 		console.log("Re-save", rec._id);
