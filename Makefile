@@ -147,6 +147,7 @@ name_binaries: force
 		cp $(ROM1) $(FW_BASE)/0x82000.bin && \
 		cp $(SDK_BASE)/bin/esp_init_data_default.bin $(FW_BASE)/0xFC000.bin && \
 		cp $(SDK_BASE)/bin/blank.bin $(FW_BASE)/0xFE000.bin
+	$(Q) if test -f 0xFC000.bin; then cp -v 0xFC000.bin $(FW_BASE)/; fi
 
 clean:
 	$(Q) make -C libesphttpd clean
