@@ -450,6 +450,7 @@ int ICACHE_FLASH_ATTR irOps(HttpdConnData *connData) {
 		}
 		if (!(txArray = parseCode(connData->post->buff))) {
 			sendOK(connData, "Bad format");
+			ReleaseMutex(&txMutex);
 			return HTTPD_CGI_DONE;
 		}
 		ReleaseMutex(&txMutex);

@@ -68,9 +68,9 @@ static wifiStatus wifiState = WIFI_AP;
 
 static wifiAccessPoint *scannedAP = NULL;
 
-static ETSTimer scanTimer, gpTimer;
+static ETSTimer scanTimer, gpTimer, apTimer;
 
-static int nConnected = 0; // No of stattions connected to softAP
+static int nConnected = 0; // No of stations connected to softAP
 static struct station_config stconf;
 
 static void ICACHE_FLASH_ATTR wifiScanDone(void *arg, STATUS status);
@@ -411,9 +411,9 @@ static ICACHE_FLASH_ATTR void wifiWPSCb(int status)
 static ICACHE_FLASH_ATTR void wifiWPSStart(void)
 {
 	if (wifiState == WIFI_CONNECTING) {
-		os_timer_disarm(&gpTimer);
-		os_timer_setfn(&gpTimer, (os_timer_func_t *)wifiWPSStart, NULL);
-		os_timer_arm(&gpTimer, 3000, 0);
+		os_timer_disarm(&apTimer);
+		os_timer_setfn(&apTimer, (os_timer_func_t *)wifiWPSStart, NULL);
+		os_timer_arm(&apTimer, 3000, 0);
 		return;
 	} else if (wifiState == WIFI_CONNECTED) {
 		return;
@@ -435,6 +435,14 @@ static void ICACHE_FLASH_ATTR wifiDisSoftAP(void)
 	if (nConnected <= 0) {
 		INFO("Disabling softAP");
 		wifi_set_opmode_current(STATION_MODE);
+		if (wifiState != WIFI_CONNECTED)
+			stledSet(STLED_OFF);
+	} else {
+		// Check again after 3 minutes
+		INFO("softAP can't be diabled due to connected client %d", nConnected);
+		os_timer_disarm(&apTimer);
+		os_timer_setfn(&apTimer, (os_timer_func_t *)wifiDisSoftAP, NULL);
+		os_timer_arm(&apTimer, 3*60*1000, 0);
 	}
 }
 #endif
@@ -449,14 +457,14 @@ void ICACHE_FLASH_ATTR wifiInit(void)
 	wifiState = WIFI_AP;
 	#ifdef ENABLE_WPS
 	// DIsable for now
-	os_timer_disarm(&gpTimer);
-	os_timer_setfn(&gpTimer, (os_timer_func_t *)wifiWPSStart, NULL);
-	os_timer_arm(&gpTimer, 10000, 0);
+	os_timer_disarm(&apTimer);
+	os_timer_setfn(&apTimer, (os_timer_func_t *)wifiWPSStart, NULL);
+	os_timer_arm(&apTimer, 10000, 0);
 	#else
 	// SoftAP is disabled 3 minutes after boot
-	os_timer_disarm(&gpTimer);
-	os_timer_setfn(&gpTimer, (os_timer_func_t *)wifiDisSoftAP, NULL);
-	os_timer_arm(&gpTimer, 3*60*1000, 0);
+	os_timer_disarm(&apTimer);
+	os_timer_setfn(&apTimer, (os_timer_func_t *)wifiDisSoftAP, NULL);
+	os_timer_arm(&apTimer, 3*60*1000, 0);
 	#endif
 
 	stledSet(STLED_BLINK_SLOW);
