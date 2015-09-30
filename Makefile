@@ -146,9 +146,17 @@ name_binaries: force
 		cp $(ROM0) $(FW_BASE)/0x02000.bin && \
 		cp $(ROM1) $(FW_BASE)/0x82000.bin && \
 		cp $(SDK_BASE)/bin/esp_init_data_default.bin $(FW_BASE)/0xFC000.bin && \
-		cp $(SDK_BASE)/bin/blank.bin $(FW_BASE)/0xFE000.bin
+		cp $(SDK_BASE)/bin/blank.bin $(FW_BASE)/0xFE000.bin && \
+		echo "{\"version\":$(ZMOTE_FIRMWARE_VERSION)}" > $(FW_BASE)/zmote-firmware.json
+
 	$(Q) if test -f 0xFC000.bin; then cp -v 0xFC000.bin $(FW_BASE)/; fi
 
+GCE_INSTANCE := harik_klarsys_com@104.154.71.241
+GCE_PATH = /home/harik_klarsys_com/zmote-broker/public
+upload_binaries: force
+	$(Q) ssh  $(GCE_INSTANCE) \
+		rm -rf $(GCE_PATH)/firmware && \
+		scp -r firmware/ $(GCE_INSTANCE):$(GCE_PATH)
 clean:
 	$(Q) make -C libesphttpd clean
 	$(Q) make -C libmqtt clean
