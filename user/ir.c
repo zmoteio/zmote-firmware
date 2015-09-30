@@ -437,7 +437,7 @@ int ICACHE_FLASH_ATTR irOps(HttpdConnData *connData)
 			return HTTPD_CGI_DONE;
 		}
 		sendJSON(connData);
-		HTTPD_SEND_STR("{\"trigger\":[");
+		HTTPD_SEND_STR("{\"status\":\"ok\",\"trigger\":[");
 		for (i = 0; i < sizeof(rxLastCode)/sizeof(rxLastCode[0]); i++) {
 			if (!rxLastCode[i])
 				break;
@@ -471,12 +471,12 @@ int ICACHE_FLASH_ATTR irOps(HttpdConnData *connData)
 		if (!i) 
 			sendOK(connData, "ok"); // Free
 		else if (i == 1)
-			sendOK(connData, "ok"); // STopped
+			sendOK(connData, "ok"); // Stopped
 		else // if (i == 2)
-			sendOK(connData, "wait");
+			sendOK(connData, "busy");
 		return HTTPD_CGI_DONE;
 	} else
-		sendOK(connData, "Unknown");
+		sendOK(connData, "unknown command");
 	return HTTPD_CGI_DONE;
 }
 
