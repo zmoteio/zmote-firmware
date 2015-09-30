@@ -197,7 +197,7 @@ int ICACHE_FLASH_ATTR cfgFile(HttpdConnData *connData)
 	char file[64], hdrKey[64], hdrVal[64];
 	int i, j;
 
-	if (connData->conn==NULL || connData->url==NULL) {
+	if (connData->url==NULL) {
 		//Connection aborted. Clean up.
 		return HTTPD_CGI_DONE;
 	}
@@ -340,7 +340,7 @@ int ICACHE_FLASH_ATTR cfgGetSet(HttpdConnData *connData)
 	jsmntok_t *tok = NULL;
 	int i, ntok;
 
-	if (connData->conn==NULL || connData->url==NULL) {
+	if (connData->url==NULL) {
 		//Connection aborted. Clean up.
 		return HTTPD_CGI_DONE;
 	}
@@ -395,7 +395,7 @@ int ICACHE_FLASH_ATTR cfgOps(HttpdConnData *connData)
 {
 	char *r;
 	int page = 0;
-	if (connData->conn==NULL || connData->url==NULL) {
+	if (connData->url==NULL) {
 		//Connection aborted. Clean up.
 		return HTTPD_CGI_DONE;
 	}

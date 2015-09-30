@@ -55,6 +55,21 @@ static HttpdBuiltInUrl builtInUrls[] = {
 	{NULL, NULL, NULL}
 };
 
+static int ICACHE_FLASH_ATTR fixPostData(char *postBuf, int len)
+{
+	int i = 0, j = 0;
+	while (j < len) {
+		if (postBuf[j] == '\\' && postBuf[j+1] == '"')
+			++j; // Skip over the back slash
+		// Copy everything else
+		postBuf[i++] = postBuf[j++];
+	}
+	postBuf[i] = 0;
+	DEBUG("fixPostdata in=%d out=%d", j, i);
+
+	return i;
+}
+
 void ICACHE_FLASH_ATTR	execRoute(const char *url, const char *method, 
 	const char *postBuf, int pbLen, char *response, int repLen)
 {
@@ -95,6 +110,7 @@ void ICACHE_FLASH_ATTR	execRoute(const char *url, const char *method,
 		os_sprintf(response, "{\"status\":\"mem error\"}");
 		goto err;
 	}
+	pbLen = fixPostData((char *)postBuf, pbLen);
 	if (!os_strcmp(method, "GET"))
 		connData->requestType = HTTPD_METHOD_GET;
 	else if (!os_strcmp(method, "PUT"))
@@ -107,6 +123,7 @@ void ICACHE_FLASH_ATTR	execRoute(const char *url, const char *method,
 		os_sprintf(response, "{\"status\":\"bad method\"}");
 		goto err;
 	}
+	os_strcpy(response, "");
 	connData->url = (char *)url;
 	connData->priv = (void *)response;
 	connData->post = postData;
@@ -117,7 +134,7 @@ void ICACHE_FLASH_ATTR	execRoute(const char *url, const char *method,
 				postData->received = pbLen;
 		postData->buff = (char *)postBuf;
 	}
-	INFO("Calling handler for %s", connData->url);
+	INFO("Calling handler for %d:%s", i, connData->url);
 	while (builtInUrls[i].cgiCb(connData) != HTTPD_CGI_DONE)
 		;
 err:

@@ -406,13 +406,15 @@ static void ICACHE_FLASH_ATTR rxMonitor(void)
 	return;
 }
 //Cgi that turns the LED on or off according to the 'led' param in the POST data
-int ICACHE_FLASH_ATTR irOps(HttpdConnData *connData) {
+int ICACHE_FLASH_ATTR irOps(HttpdConnData *connData) 
+{
 	int i;
 
-	if (connData->conn==NULL || connData->url==NULL) {
+	if (connData->url==NULL) {
 		//Connection aborted. Clean up.
 		return HTTPD_CGI_DONE;
 	}
+
 	if (connData->requestType == HTTPD_METHOD_OPTIONS) {
 		sendJSON(connData);
 		HTTPD_SEND_STR("{\"status\":\"ok\"}\r\n\r\n");
@@ -445,11 +447,11 @@ int ICACHE_FLASH_ATTR irOps(HttpdConnData *connData) {
 		ReleaseMutex(&rxMutex);
 	} else if (URL_IS("/api/ir/write")) {
 		if (txArray || !GetMutex(&txMutex)) {
-			sendOK(connData, "Busy"); // FIXME For now.  There's no Q
+			sendOK(connData, "busy"); // FIXME For now.  There's no Q
 			return HTTPD_CGI_DONE;
 		}
 		if (!(txArray = parseCode(connData->post->buff))) {
-			sendOK(connData, "Bad format");
+			sendOK(connData, "badformat");
 			ReleaseMutex(&txMutex);
 			return HTTPD_CGI_DONE;
 		}
@@ -461,17 +463,17 @@ int ICACHE_FLASH_ATTR irOps(HttpdConnData *connData) {
 		if (!i)
 			sendOK(connData, "busy");
 		else if (i == 1)
-			sendOK(connData, "OK"); // Sending
+			sendOK(connData, "ok"); // Sending
 		else
-			sendOK(connData, "OK"); // FInished
+			sendOK(connData, "ok"); // FInished
 	} else if (URL_IS("/api/ir/stop")) {
 		i = abortSend();
 		if (!i) 
-			sendOK(connData, "OK"); // Free
+			sendOK(connData, "ok"); // Free
 		else if (i == 1)
-			sendOK(connData, "OK"); // STopped
+			sendOK(connData, "ok"); // STopped
 		else // if (i == 2)
-			sendOK(connData, "Wait");
+			sendOK(connData, "wait");
 		return HTTPD_CGI_DONE;
 	} else
 		sendOK(connData, "Unknown");
