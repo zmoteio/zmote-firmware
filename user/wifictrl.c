@@ -204,6 +204,8 @@ int ICACHE_FLASH_ATTR wifiConnectAP(HttpdConnData *connData)
 		else
 			sendOK(connData, "OK");
 	} else if (strlen((char *)stconf.ssid) /*&& strlen((char *)stconf.password)*/) {
+		cfgSet("ssidSTA", (char *)stconf.ssid);
+		cfgSet("pswdSTA", (char *)stconf.password);
 		INFO("connecting to %s:%s", stconf.ssid, stconf.password);
 		sendOK(connData, "OK");
 		stconf.bssid_set = 0;
