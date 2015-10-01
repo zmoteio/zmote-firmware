@@ -323,9 +323,10 @@ function getWidgets(max) {
                 throw (new Error("No widgets found"));
             if (prnWidgets)
                 w.forEach(function(w, i) {
-                    console.log("[" + i + "] Found widget: " + w.chipID);
+                    console.log("[" + i + "] Widget : " + w.chipID);
                     console.log("    LocalIP: " + w.localIP);
-                    console.log("    ExtIP: " + w.extIP);
+                    console.log("    ExtIP  : " + w.extIP);
+                    console.log("    version: " + w.version);
                     if (argv.chipid && w.chipID == argv.chipid)
                         state.widget = w;
                 });
@@ -425,6 +426,7 @@ function serveHttp(nfiles) {
     console.log("Starting HTTP server...");
     var server = require('http').createServer(function(request, response) {
         request.addListener('end', function() {
+            console.log(request.url);
             fileServer.serve(request, response, function(err, result) {
                 if (err) { // There was an error serving the file
                     console.error("Error serving " + request.url + " - " + err.message);
@@ -528,7 +530,7 @@ function updateFSCycle(nupdate) {
                 }
                 return updateFSCycle(nupdate);
             });
-    return 
+    return
 }
 function updateCycle(nupdate) {
     var rom;
