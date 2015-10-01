@@ -151,12 +151,18 @@ name_binaries: force
 
 	$(Q) if test -f 0xFC000.bin; then cp -v 0xFC000.bin $(FW_BASE)/; fi
 
-GCE_INSTANCE := harik_klarsys_com@104.154.71.241
-GCE_PATH = /home/harik_klarsys_com/zmote-broker/public
+GCE_IP = 104.154.71.241
+GCE_INSTANCE := harik_klarsys_com@$(GCE_IP)
+ZMOTE_FW_VER_UNQUOTED = $(shell echo $(shell echo $(ZMOTE_FIRMWARE_VERSION)))
+GCE_PATH = /home/harik_klarsys_com/zmote-broker/public/$(ZMOTE_FW_VER_UNQUOTED)
 upload_binaries: force
 	$(Q) ssh  $(GCE_INSTANCE) \
-		rm -rf $(GCE_PATH)/firmware && \
-		scp -r firmware/ $(GCE_INSTANCE):$(GCE_PATH)
+		rm -rf $(GCE_PATH) && \
+		scp -r firmware/ $(GCE_INSTANCE):$(GCE_PATH) && \
+		heroku config:set -a zmote OTA_SERVER_IP=$(GCE_IP) \
+				OTA_SERVER_PORT=2885 \
+				OTA_SERVER_PATH=$(ZMOTE_FW_VER_UNQUOTED)
+
 clean:
 	$(Q) make -C libesphttpd clean
 	$(Q) make -C libmqtt clean
