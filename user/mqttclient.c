@@ -281,6 +281,8 @@ void ICACHE_FLASH_ATTR mqttHello(void)
 {
     if (mqttState != CONNECTED)
         return;
+    if (!mqttMkHelloMsg())
+        return;
     MQTT_Publish(&mqttClient, pubTopic, idMessage, strlen(idMessage), 1, 1);
 }
 
