@@ -292,7 +292,7 @@ void ICACHE_FLASH_ATTR mqttInit(void)
     // serial/secret to auth; send mac, chip id, local ip as second packet
     // mqtt_server mqtt_port
 	if (mqttState == INIT) {
-        if (mqttMkHelloMsg())
+        if (!mqttMkHelloMsg())
             goto err;
         INFO("mqtt init");
 
