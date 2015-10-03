@@ -303,6 +303,7 @@ static void ICACHE_FLASH_ATTR updateFSTab(updatefs_state *s)
 	for (i = 0; s->fstab[i]; i += 2)
 		cfgSet(s->fstab[i], s->fstab[i+1]);
 	cfgSet("fs_version", s->fs_version);
+	mqttHello();
 }
 
 static void ICACHE_FLASH_ATTR wget(updatefs_state *s)

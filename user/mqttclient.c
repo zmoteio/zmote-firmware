@@ -256,18 +256,45 @@ int ICACHE_FLASH_ATTR mqttConnected(void)
 } while (0)
 
 static char serial[32], chipID[9], secret[65], mqtt_server[64];
+static int ICACHE_FLASH_ATTR mqttMkHelloMsg(void)
+{
+    char temp[32];
+    uint8 mac[6];
+    struct ip_info ipconfig;
+
+    INFO("mqtt helloMsg");
+    wifi_get_ip_info(STATION_IF, &ipconfig);
+
+    os_sprintf(chipID, "%08x", system_get_chip_id());
+    wifi_get_macaddr(STATION_IF, mac);
+
+    os_sprintf(subTopic, "zmote/towidget/%s", chipID);
+    os_sprintf(pubTopic, "zmote/widget/%s", chipID);
+    os_sprintf(idMessage, "{\"ts\":%d,\"version\":\"" ZMOTE_FIRMWARE_VERSION "\","
+        "\"fs_version\":\"%s\",\"chipID\":\"%s\",\"ip\":\"" IPSTR "\"}", 
+            system_get_time(), cfgGet("fs_version", temp, sizeof(temp)),
+            chipID, IP2STR(&ipconfig.ip));
+    return 1;
+
+}
+void ICACHE_FLASH_ATTR mqttHello(void)
+{
+    if (mqttState != CONNECTED)
+        return;
+    MQTT_Publish(&mqttClient, pubTopic, idMessage, strlen(idMessage), 1, 1);
+}
+
 void ICACHE_FLASH_ATTR mqttInit(void)
 {
+    int mqtt_port = 0, mqtt_keepalive = 0;
+    char temp[32];
+
     // serial/secret to auth; send mac, chip id, local ip as second packet
     // mqtt_server mqtt_port
 	if (mqttState == INIT) {
-        char temp[32];
-        int mqtt_port = 0, mqtt_keepalive = 0;
-        uint8 mac[6];
-        struct ip_info ipconfig;
-
+        if (mqttMkHelloMsg())
+            goto err;
         INFO("mqtt init");
-        wifi_get_ip_info(STATION_IF, &ipconfig);
 
         if (!cfgGet("serial", serial, sizeof(serial)))
             BAD_CFG; // Not properly configured yet
@@ -281,21 +308,11 @@ void ICACHE_FLASH_ATTR mqttInit(void)
         if (!cfgGet("mqtt_port", temp, sizeof(temp)))
             BAD_CFG; // Not properly configured yet
         mqtt_port = atoi(temp);
-        os_sprintf(chipID, "%08x", system_get_chip_id());
-        wifi_get_macaddr(STATION_IF, mac);
-
         DEBUG("serial=\"%s\"", serial);
         DEBUG("secret=\"%s\"", secret);
         DEBUG("mqtt_server=\"%s\"", mqtt_server);
         DEBUG("mqtt_port=%d", mqtt_port);
         DEBUG("mqtt_keepalive=%d", mqtt_keepalive);
-        os_sprintf(subTopic, "zmote/towidget/%s", chipID);
-        os_sprintf(pubTopic, "zmote/widget/%s", chipID);
-        os_sprintf(idMessage, "{\"ts\":%d,\"version\":\"" ZMOTE_FIRMWARE_VERSION "\","
-            "\"fs_version\":\"%s\",\"chipID\":\"%s\",\"ip\":\"" IPSTR "\"}", 
-                system_get_time(), cfgGet("fs_version", temp, sizeof(temp)),
-                chipID, IP2STR(&ipconfig.ip));
-
         //MQTT_InitConnection(&mqttClient, sysCfg.mqtt_host, sysCfg.mqtt_port, sysCfg.security);
         MQTT_InitConnection(&mqttClient, (uint8 *)mqtt_server, mqtt_port, 0);
 
