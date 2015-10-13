@@ -70,6 +70,7 @@ static wifiAccessPoint *scannedAP = NULL;
 
 static ETSTimer scanTimer, gpTimer, apTimer;
 
+static int nConnFailed = 0; // No of times connection to AP falied
 static int nConnected = 0; // No of stations connected to softAP
 static struct station_config stconf;
 
@@ -276,23 +277,30 @@ void ICACHE_FLASH_ATTR wifiEventCB(System_Event_t *evt)
 	INFO("event %x", evt->event);
 	switch (evt->event) {
 	case EVENT_STAMODE_CONNECTED:
+		nConnFailed = 0;
 		wifiState = WIFI_CONNECTING;
 		WARN("connect to ssid %s, channel %d",
 		          evt->event_info.connected.ssid,
 		          evt->event_info.connected.channel);
 		break;
 	case EVENT_STAMODE_DISCONNECTED:
+		nConnFailed++;
 		wifiState = WIFI_AP;
 		WARN("disconnect from ssid %s, reason %d",
 		          evt->event_info.disconnected.ssid,
 		          evt->event_info.disconnected.reason);
+		// Restart if we could not connect to an AP for quite some time (only if SoftAP is disabled)
+		if (nConnFailed >= 20 && wifi_get_opmode() != STATIONAP_MODE)
+			system_restart();
 		os_timer_disarm(&scanTimer);
 		os_timer_setfn(&scanTimer, (os_timer_func_t *)wifiStartScan, 0);
 		os_timer_arm(&scanTimer, 10, 0); // Re-scan right away
 		stledSet(STLED_BLINK_SLOW);
 		os_timer_disarm(&gpTimer);
 		os_timer_setfn(&gpTimer, (os_timer_func_t *)wifiConnect, NULL);
-		os_timer_arm(&gpTimer, 1000, 0);
+		// NOTE: Once wifi_station_connect() is called, system re-tries connection every 1s until
+		//       connection is established. This timer will be irrelevent then.
+		os_timer_arm(&gpTimer, 10*1000, 0);
 		break;
 	case EVENT_STAMODE_AUTHMODE_CHANGE:
 		WARN("mode: %d -> %d",
