@@ -16,6 +16,7 @@ flash as a binary. Also handles the hit counter on the main page.
 #include <esp8266.h>
 #include "wifictrl.h"
 #include "mqttclient.h"
+#include "itach.h"
 #include "rest_utils.h"
 #include "jsmn.h"
 #include "console.h"
@@ -267,6 +268,8 @@ int ICACHE_FLASH_ATTR wifiConnectionStatus(HttpdConnData *connData)
 static void ICACHE_FLASH_ATTR gotIPCb(void)
 {
 	mqttInit();
+	itachInit();
+
 	if (newConnect) {
 		newConnect = false;
 		wifi_set_opmode_current(STATION_MODE);

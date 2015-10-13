@@ -10,6 +10,7 @@
 #include "routes.h"
 #include "rest_utils.h"
 #include "console.h"
+#include "itach.h"
 
 #if 0
 //Function that tells the authentication system what users/passwords live on the system.
@@ -50,6 +51,8 @@ static HttpdBuiltInUrl builtInUrls[] = {
 
 	{STA_MAC_ADDR_MARKER "/api/spi/*", cfgOps, NULL},
 	{STA_MAC_ADDR_MARKER "/api/config/*", cfgGetSet, NULL},
+
+	{"/config.htm", itachConfig, NULL },
 
 	{"*", cfgFile, NULL}, //Catch-all cgi function for the filesystem
 	{NULL, NULL, NULL}
