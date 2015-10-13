@@ -3,6 +3,7 @@
 #include "rest_utils.h"
 
 #include "console.h"
+#include "ir.h"
 #include "itach.h"
 
 int ICACHE_FLASH_ATTR itachConfig(HttpdConnData *connData) 
@@ -14,10 +15,10 @@ int ICACHE_FLASH_ATTR itachConfig(HttpdConnData *connData)
 	}
 	wifi_get_macaddr(STATION_IF, mac);
 	httpdStartResponse(connData, 200);
-	httpdHeader(connData, "Content-Type", "text/html");
+	httpdHeader(connData, "Content-Type", "text/html; charset=utf-8");
 	httpdEndHeaders(connData);
 	HTTPD_PRINTF("<name=\"MAC\" size=\"18\" "
-			"value=\"%02x:%02x:%02x:%02x:%02x:%02x\">\r\n\r\n",
+			"value=\"%02X:%02X:%02X:%02X:%02X:%02X\">\r\n",
 			mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
 	return HTTPD_CGI_DONE;
 }
@@ -29,6 +30,7 @@ static char beaconMsg[] = "AMXB<-UUID=GlobalCache_MMMMMMMMMMMM>"
 	"<-Revision=710-1001-05><-Pkg_Level=GCPK001>"
 	"<-Config-URL=http://IIIIIII         >"
 	"<-PCB_PN=025-0026-06><-Status=Ready>";
+static char postBeacon[] = "><-PCB_PN=025-0026-06><-Status=Ready>";
 
 static struct espconn *udpConn = NULL;
 static struct espconn *tcpConn = NULL;
@@ -53,14 +55,17 @@ static void ICACHE_FLASH_ATTR tcpRecvCb(void *arg, char *data, unsigned short le
 		// The reply should hold everything between the first and thir commas
 		// Example input: "sendir,1:2,49,38028,1,1,172,171,..."
 		// Output: "completeir,1:2,49\r"
-		char *p, *q; 
-		p = q = strchr(data, ',');
-		q = strchr(q, ',');
-		if (q) q = strchr(q, ',');
+		char *p, *q = NULL; 
+		p = strchr(data, ',');
+		if (p) q = strchr(p+1, ',');
+		if (q) q = strchr(q+1, ',');
 		if (!p || !q)
 			goto err;
+		INFO("p=\"%s\" q=\"%s\"", p, q);
 		*q = 0;
 		os_sprintf(reply, "completeir%s\r", p);
+		if (irSend(q+1) <= 0)
+			os_sprintf(reply, "busy");
 	} else {
 err:
 		os_strcpy(reply, "unknowncommand,ERR_01\r");
@@ -190,12 +195,13 @@ void ICACHE_FLASH_ATTR itachInit(void)
 	os_strncpy(strstr(beaconMsg, "MMMMMMMMMMMM"), macstr, 12);
 
 	os_sprintf(ipstr, "%d.%d.%d.%d", IP2STR(&ipconfig.ip));
-	os_strncpy(strstr(beaconMsg, "IIIIIII"), ipstr, strlen(ipstr));
+	os_strncpy(strstr(beaconMsg, "IIIIIII"), ipstr, strlen(ipstr)+1);
+	os_strcpy(beaconMsg + strlen(beaconMsg), postBeacon);
 
 	INFO("Beacon msg=%s", beaconMsg);
 	initConn();
 	os_timer_disarm(&beaconTimer);
 	os_timer_setfn(&beaconTimer, beaconTimerCb, NULL);
-	os_timer_arm(&beaconTimer, 3000, 1);
+	os_timer_arm(&beaconTimer, 10000, 1);
 
 }

@@ -190,6 +190,63 @@ err:
 	return NULL;
 }
 
+static IrCode ** ICACHE_FLASH_ATTR parseIRSend(const char *cmd)
+{
+	int i, n = 0, alloc;
+	const char *p;
+	IrCode **pCode = NULL;
+
+	// COunt the number of commas
+	p = cmd;
+	while (*p && (p = strchr(p, ','))) {
+		++p;
+		++n;
+	}
+	alloc = n - 2;
+	if (alloc&1)
+		++alloc;
+	INFO("n=%d alloc=%d", n, alloc);
+	// Allocate
+	if (!(pCode = os_zalloc(2*sizeof(IrCode *)))) {
+		ERROR("memory err");
+		goto err;
+	}
+	if (!(pCode[0] = os_zalloc(sizeof(*pCode[0]) + alloc*sizeof(pCode[0]->seq[0])))) {
+		ERROR("out of mem");
+		goto err;
+	}
+	pCode[0]->alloc = alloc;
+
+	// Format of the string is
+	//	frequency,repeatN,repeatStart,ON,OFF,ON,OFF
+	p = cmd;
+	pCode[0]->period = atoi(p);
+	INFO("freq=%d", pCode[0]->period);
+	// we need to do 1e6/freq/2*65536
+	// we try to preserve precision while sticking with integer arithmetic
+	// we lose out on just bits
+	pCode[0]->period = ((1000000u*0x1000u)/(pCode[0]->period))<<3u;
+	INFO("period=%d", pCode[0]->period);
+	pCode[0]->n = alloc;
+	pCode[0]->alloc = alloc;
+	p = strchr(p, ',') + 1; 
+	pCode[0]->repeat[0] = atoi(p) - 1;
+	p = strchr(p, ',') + 1; 
+	pCode[0]->repeat[1] = atoi(p) - 1;
+	pCode[0]->repeat[2] = alloc - pCode[0]->repeat[1];
+
+	for (i = 0; i < n - 2; i++) {
+		p = strchr(p, ',') + 1; 
+		pCode[0]->seq[i] = atoi(p);
+	}
+	return pCode;
+err:
+	if (pCode && pCode[0])
+		os_free(pCode[0]);
+	if (pCode)
+		os_free(pCode);
+	return NULL;
+}
 
 // Cheap and dirty "accumulative" timer protects against drift errors during ON phase
 static uint32 start;
@@ -480,6 +537,22 @@ int ICACHE_FLASH_ATTR irOps(HttpdConnData *connData)
 	return HTTPD_CGI_DONE;
 }
 
+int ICACHE_FLASH_ATTR irSend(char *cmd)
+{
+	if (txArray || !GetMutex(&txMutex)) {
+		WARN("irSend busy");
+		return -1;
+	}
+	if (!(txArray = parseIRSend(cmd))) {
+		ERROR("bad irSend format");
+		ReleaseMutex(&txMutex);
+		return -1;
+	}
+	ReleaseMutex(&txMutex);
+	//printCode(txArray);
+	txNow = 0;
+	return txCode(txArray[0]);
+}
 		
 void ICACHE_FLASH_ATTR irInit(void)
 {
