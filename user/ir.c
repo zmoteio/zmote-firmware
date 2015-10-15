@@ -411,7 +411,38 @@ static void gpioInterrupt(void)  // Placed in IRAM (as opposed to ICACHE) FWIW
 	GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, status);
 }
 
+static struct espconn *irLearnConn = NULL;
+static void ICACHE_FLASH_ATTR transmitLearnedCode(void)
+{
+	int i, n, big = 0;
+	char sendir[512];
+	for (i = 0; i < sizeof(rxLastCode)/sizeof(rxLastCode[0]) && big < 2 && rxLastCode[i]; i++)
+		if (rxLastCode[i] > maxBusyWait)
+			++big;
+	DEBUG("Code=%d big=%d", i, big);
+	if (big < 2)
+		return;
+	DEBUG("Probably got a full sequence");
+	if (!irLearnConn)
+		return;
 
+	os_sprintf(sendir, "sendir,1:1,0,38400,1,1");
+	for (i = 0; i < sizeof(rxLastCode)/sizeof(rxLastCode[0]) && rxLastCode[i]; i++) {
+		n = os_strlen(sendir);
+		if (n > sizeof(sendir) - 8)
+			break;
+		// 38400/1e6 * 65536 == 2516.58
+		os_sprintf(sendir+n, ",%d", (rxLastCode[i]*2517u + 0x7FFFu)>>16u);
+	}
+	n = os_strlen(sendir);
+	if (i&1)
+		os_strcpy(sendir+n, ",3692\r");
+	else
+		os_strcpy(sendir+n, "\r");
+	INFO("Got learned code: %s", sendir);
+	espconn_send(irLearnConn, (uint8 *)sendir, os_strlen(sendir));
+	rxLastCode[0] = 0;
+}
 static void ICACHE_FLASH_ATTR rxMonitor(void)
 {
 	int ncodes, ndx = 0;
@@ -454,6 +485,8 @@ static void ICACHE_FLASH_ATTR rxMonitor(void)
 		lastTS = nextTS;
 	}
 	rxLastCode[ndx++] = 0; // xero marks the end
+	if (irLearnConn)
+		transmitLearnedCode();
 	// FIXME: Post to MQTT here
 	ReleaseMutex(&rxMutex);
 	os_timer_disarm(&rxTimer);
@@ -553,7 +586,25 @@ int ICACHE_FLASH_ATTR irSend(char *cmd)
 	txNow = 0;
 	return txCode(txArray[0]);
 }
-		
+int ICACHE_FLASH_ATTR irSendStop(void)
+{
+	return abortSend();
+}
+int ICACHE_FLASH_ATTR irLearn(struct espconn *conn)
+{
+	if (!GetMutex(&rxMutex))
+		return -1;
+	rxReadNdx = rxTriggerNdx;
+	irLearnConn = conn;
+	rxLastCode[0] = 0;
+	ReleaseMutex(&rxMutex);
+	return 1;
+}
+int ICACHE_FLASH_ATTR irLearnStop(struct espconn *conn)
+{
+	irLearnConn = NULL;
+	return 1;
+}
 void ICACHE_FLASH_ATTR irInit(void)
 {
 	char temp[64];

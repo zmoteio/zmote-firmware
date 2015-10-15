@@ -25,11 +25,11 @@ int ICACHE_FLASH_ATTR itachConfig(HttpdConnData *connData)
 
 static ETSTimer beaconTimer;
 
-static char beaconMsg[] = "AMXB<-UUID=GlobalCache_MMMMMMMMMMMM>"
-	"<-SDKClass=Utility><-Make=GlobalCache><-Model=iTachWF2IR>"
-	"<-Revision=710-1001-05><-Pkg_Level=GCPK001>"
+static char beaconMsg[] = "AMXB<-UUID=zmote_MMMMMMMMMMMM>"
+	"<-SDKClass=Utility><-Make=zmote.io><-Model=zmote>"
+	"<-Revision=" ZMOTE_FIRMWARE_VERSION "><-Pkg_Level=ZMPK001>"
 	"<-Config-URL=http://IIIIIII         >"
-	"<-PCB_PN=025-0026-06><-Status=Ready>";
+	"<-PCB_PN=zmotev1><-Status=Ready>";
 static char postBeacon[] = "><-PCB_PN=025-0026-06><-Status=Ready>";
 
 static struct espconn *udpConn = NULL;
@@ -45,14 +45,14 @@ static void ICACHE_FLASH_ATTR tcpRecvCb(void *arg, char *data, unsigned short le
 		os_strcpy(reply, "device,0,0 WIFI\rdevice,1,3 IR\rendlistdevices\r");
 	} else if (MATCH_AT_START(data, "getversion,")) {
 		os_strcpy(reply, data + 3);
-		os_strcpy(reply + strlen(reply), ",710-1001-05\r");
+		os_strcpy(reply + strlen(reply), "," ZMOTE_FIRMWARE_VERSION "\r");
 	} else if (MATCH_AT_START(data, "getversion")) {
-		os_strcpy(reply, "710-1001-05\r");
+		os_strcpy(reply, ZMOTE_FIRMWARE_VERSION "\r");
 	} else if (MATCH_AT_START(data, "get_IR,")) {
 		os_strcpy(reply, data + 5);
 		os_strcpy(reply + strlen(reply), ",IR_BLASTER\r");
 	} else if (MATCH_AT_START(data, "sendir,")) {
-		// The reply should hold everything between the first and thir commas
+		// The reply should hold everything between the first and third commas
 		// Example input: "sendir,1:2,49,38028,1,1,172,171,..."
 		// Output: "completeir,1:2,49\r"
 		char *p, *q = NULL; 
@@ -65,7 +65,18 @@ static void ICACHE_FLASH_ATTR tcpRecvCb(void *arg, char *data, unsigned short le
 		*q = 0;
 		os_sprintf(reply, "completeir%s\r", p);
 		if (irSend(q+1) <= 0)
-			os_sprintf(reply, "busy");
+			os_sprintf(reply, "busyir%s\r", p);
+	} else if (MATCH_AT_START(data, "stopir")) {
+		irSendStop();
+		os_sprintf(reply, "%s\r", data);
+	} else if (MATCH_AT_START(data, "get_IRL")) {
+		if (irLearn(conn) <= 0)
+			os_sprintf(reply, "busyir\r");
+		else
+			os_sprintf(reply, "IR Learner Enabled\r");
+	} else if (MATCH_AT_START(data, "stop_IRL")) {
+		irLearnStop(conn);
+		os_sprintf(reply, "IR Learner Disabled\r");
 	} else {
 err:
 		os_strcpy(reply, "unknowncommand,ERR_01\r");
