@@ -25,12 +25,11 @@ int ICACHE_FLASH_ATTR itachConfig(HttpdConnData *connData)
 
 static ETSTimer beaconTimer;
 
-static char beaconMsg[] = "AMXB<-UUID=zmote_MMMMMMMMMMMM>"
+static char beaconMsg[] = "AMXB<-UUID=GlobalCache_MMMMMMMMMMMM>"
 	"<-SDKClass=Utility><-Make=zmote.io><-Model=zmote>"
-	"<-Revision=" ZMOTE_FIRMWARE_VERSION "><-Pkg_Level=ZMPK001>"
-	"<-Config-URL=http://IIIIIII         >"
-	"<-PCB_PN=zmotev1><-Status=Ready>";
-static char postBeacon[] = "><-PCB_PN=025-0026-06><-Status=Ready>";
+	"<-Revision=" ZMOTE_FIRMWARE_VERSION "><-Pkg_Level=ZMPK001><-PCB_PN=zmotev1>"
+	"<-Config-URL=http://IIIIIII         ><-Status=Ready>";
+static char postBeacon[] = "><-Status=Ready>";
 
 static struct espconn *udpConn = NULL;
 static struct espconn *tcpConn = NULL;
@@ -49,7 +48,7 @@ static void ICACHE_FLASH_ATTR tcpRecvCb(void *arg, char *data, unsigned short le
 	} else if (MATCH_AT_START(data, "getversion")) {
 		os_strcpy(reply, ZMOTE_FIRMWARE_VERSION "\r");
 	} else if (MATCH_AT_START(data, "get_IR,")) {
-		os_strcpy(reply, data + 5);
+		os_strcpy(reply, data + 4);
 		os_strcpy(reply + strlen(reply), ",IR_BLASTER\r");
 	} else if (MATCH_AT_START(data, "sendir,")) {
 		// The reply should hold everything between the first and third commas
@@ -65,13 +64,13 @@ static void ICACHE_FLASH_ATTR tcpRecvCb(void *arg, char *data, unsigned short le
 		*q = 0;
 		os_sprintf(reply, "completeir%s\r", p);
 		if (irSend(q+1) <= 0)
-			os_sprintf(reply, "busyir%s\r", p);
+			os_sprintf(reply, "busyIR%s\r", p);
 	} else if (MATCH_AT_START(data, "stopir")) {
 		irSendStop();
 		os_sprintf(reply, "%s\r", data);
 	} else if (MATCH_AT_START(data, "get_IRL")) {
 		if (irLearn(conn) <= 0)
-			os_sprintf(reply, "busyir\r");
+			os_sprintf(reply, "busyIR,1:1,0\r"); // FIXME
 		else
 			os_sprintf(reply, "IR Learner Enabled\r");
 	} else if (MATCH_AT_START(data, "stop_IRL")) {
@@ -94,7 +93,7 @@ static void ICACHE_FLASH_ATTR tcpDisconCb(void *arg)
 }
 static void ICACHE_FLASH_ATTR tcpSentCb(void *arg) 
 {
-	INFO("FInished sending");
+	INFO("Finished sending");
 }
 static void ICACHE_FLASH_ATTR tcpConnectCB(void *arg) 
 {
@@ -198,7 +197,7 @@ void ICACHE_FLASH_ATTR itachInit(void)
 	wifi_get_ip_info(STATION_IF, &ipconfig);
 	wifi_get_macaddr(STATION_IF, mac);
 
-	os_sprintf(macstr, "%02x%02x%02x%02x%02x%02x", mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
+	os_sprintf(macstr, "%02X%02X%02X%02X%02X%02X", mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
 	os_sprintf(hostname, "GlobalCache_%s", macstr);
 	INFO("hostname = %s", hostname);
 	if (!wifi_station_set_hostname(hostname)) 
