@@ -102,6 +102,8 @@ static IrCode *ICACHE_FLASH_ATTR parseSeq(const char *json, jsmntok_t *t, int *s
 	for (i = 0, j = 1; i < t[0].size; i++, j += 2 + t[j+1].size) {
 		if (jsonEq(json, &t[j], "period")) {
 			code->period = jsonNum(json, &t[j+1]);
+		} else if (jsonEq(json, &t[j], "frequency")) {
+			code->period = 32768000000.0 / jsonNum(json, &t[j+1]);
 		} else if (jsonEq(json, &t[j], "n")) {
 			code->n = jsonNum(json, &t[j+1]);
 		} else if (jsonEq(json, &t[j], "repeat")) {
