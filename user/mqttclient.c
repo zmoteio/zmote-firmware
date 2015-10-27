@@ -258,7 +258,7 @@ int ICACHE_FLASH_ATTR mqttConnected(void)
 static char serial[32], chipID[9], secret[65], mqtt_server[64];
 static int ICACHE_FLASH_ATTR mqttMkHelloMsg(void)
 {
-    char temp[32];
+    char temp[32], name[32];
     uint8 mac[6];
     struct ip_info ipconfig;
 
@@ -268,11 +268,13 @@ static int ICACHE_FLASH_ATTR mqttMkHelloMsg(void)
     os_sprintf(chipID, "%08x", system_get_chip_id());
     wifi_get_macaddr(STATION_IF, mac);
 
+    if (!cfgGet("ssidAP", name, sizeof(name)))
+        os_strcpy(name, "NotSet");
     os_sprintf(subTopic, "zmote/towidget/%s", chipID);
     os_sprintf(pubTopic, "zmote/widget/%s", chipID);
-    os_sprintf(idMessage, "{\"ts\":%d,\"version\":\"" ZMOTE_FIRMWARE_VERSION "\","
+    os_sprintf(idMessage, "{\"ts\":%d,\"name\":\"%s\",\"version\":\"" ZMOTE_FIRMWARE_VERSION "\","
         "\"fs_version\":\"%s\",\"chipID\":\"%s\",\"ip\":\"" IPSTR "\"}", 
-            system_get_time(), cfgGet("fs_version", temp, sizeof(temp)),
+            system_get_time(), name, cfgGet("fs_version", temp, sizeof(temp)),
             chipID, IP2STR(&ipconfig.ip));
     return 1;
 

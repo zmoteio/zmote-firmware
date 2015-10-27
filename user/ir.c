@@ -192,6 +192,63 @@ err:
 	return NULL;
 }
 
+static IrCode ** ICACHE_FLASH_ATTR parseIRSend(const char *cmd)
+{
+	int i, n = 0, alloc;
+	const char *p;
+	IrCode **pCode = NULL;
+
+	// COunt the number of commas
+	p = cmd;
+	while (*p && (p = strchr(p, ','))) {
+		++p;
+		++n;
+	}
+	alloc = n - 2;
+	if (alloc&1)
+		++alloc;
+	INFO("n=%d alloc=%d", n, alloc);
+	// Allocate
+	if (!(pCode = os_zalloc(2*sizeof(IrCode *)))) {
+		ERROR("memory err");
+		goto err;
+	}
+	if (!(pCode[0] = os_zalloc(sizeof(*pCode[0]) + alloc*sizeof(pCode[0]->seq[0])))) {
+		ERROR("out of mem");
+		goto err;
+	}
+	pCode[0]->alloc = alloc;
+
+	// Format of the string is
+	//	frequency,repeatN,repeatStart,ON,OFF,ON,OFF
+	p = cmd;
+	pCode[0]->period = atoi(p);
+	INFO("freq=%d", pCode[0]->period);
+	// we need to do 1e6/freq/2*65536
+	// we try to preserve precision while sticking with integer arithmetic
+	// we lose out on just bits
+	pCode[0]->period = ((1000000u*0x1000u)/(pCode[0]->period))<<3u;
+	INFO("period=%d", pCode[0]->period);
+	pCode[0]->n = alloc;
+	pCode[0]->alloc = alloc;
+	p = strchr(p, ',') + 1; 
+	pCode[0]->repeat[0] = atoi(p) - 1;
+	p = strchr(p, ',') + 1; 
+	pCode[0]->repeat[1] = atoi(p) - 1;
+	pCode[0]->repeat[2] = alloc - pCode[0]->repeat[1];
+
+	for (i = 0; i < n - 2; i++) {
+		p = strchr(p, ',') + 1; 
+		pCode[0]->seq[i] = atoi(p);
+	}
+	return pCode;
+err:
+	if (pCode && pCode[0])
+		os_free(pCode[0]);
+	if (pCode)
+		os_free(pCode);
+	return NULL;
+}
 
 // Cheap and dirty "accumulative" timer protects against drift errors during ON phase
 static uint32 start;
@@ -356,7 +413,38 @@ static void gpioInterrupt(void)  // Placed in IRAM (as opposed to ICACHE) FWIW
 	GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, status);
 }
 
+static struct espconn *irLearnConn = NULL;
+static void ICACHE_FLASH_ATTR transmitLearnedCode(void)
+{
+	int i, n, big = 0;
+	char sendir[512];
+	for (i = 0; i < sizeof(rxLastCode)/sizeof(rxLastCode[0]) && big < 2 && rxLastCode[i]; i++)
+		if (rxLastCode[i] > maxBusyWait)
+			++big;
+	DEBUG("Code=%d big=%d", i, big);
+	if (big < 2)
+		return;
+	DEBUG("Probably got a full sequence");
+	if (!irLearnConn)
+		return;
 
+	os_sprintf(sendir, "sendir,1:1,0,38400,1,1");
+	for (i = 0; i < sizeof(rxLastCode)/sizeof(rxLastCode[0]) && rxLastCode[i]; i++) {
+		n = os_strlen(sendir);
+		if (n > sizeof(sendir) - 8)
+			break;
+		// 38400/1e6 * 65536 == 2516.58
+		os_sprintf(sendir+n, ",%d", (rxLastCode[i]*2517u + 0x7FFFu)>>16u);
+	}
+	n = os_strlen(sendir);
+	if (i&1)
+		os_strcpy(sendir+n, ",3692\r");
+	else
+		os_strcpy(sendir+n, "\r");
+	INFO("Got learned code: %s", sendir);
+	espconn_send(irLearnConn, (uint8 *)sendir, os_strlen(sendir));
+	rxLastCode[0] = 0;
+}
 static void ICACHE_FLASH_ATTR rxMonitor(void)
 {
 	int ncodes, ndx = 0;
@@ -399,6 +487,8 @@ static void ICACHE_FLASH_ATTR rxMonitor(void)
 		lastTS = nextTS;
 	}
 	rxLastCode[ndx++] = 0; // xero marks the end
+	if (irLearnConn)
+		transmitLearnedCode();
 	// FIXME: Post to MQTT here
 	ReleaseMutex(&rxMutex);
 	os_timer_disarm(&rxTimer);
@@ -482,7 +572,41 @@ int ICACHE_FLASH_ATTR irOps(HttpdConnData *connData)
 	return HTTPD_CGI_DONE;
 }
 
-		
+int ICACHE_FLASH_ATTR irSend(char *cmd)
+{
+	if (txArray || !GetMutex(&txMutex)) {
+		WARN("irSend busy");
+		return -1;
+	}
+	if (!(txArray = parseIRSend(cmd))) {
+		ERROR("bad irSend format");
+		ReleaseMutex(&txMutex);
+		return -1;
+	}
+	ReleaseMutex(&txMutex);
+	//printCode(txArray);
+	txNow = 0;
+	return txCode(txArray[0]);
+}
+int ICACHE_FLASH_ATTR irSendStop(void)
+{
+	return abortSend();
+}
+int ICACHE_FLASH_ATTR irLearn(struct espconn *conn)
+{
+	if (!GetMutex(&rxMutex))
+		return -1;
+	rxReadNdx = rxTriggerNdx;
+	irLearnConn = conn;
+	rxLastCode[0] = 0;
+	ReleaseMutex(&rxMutex);
+	return 1;
+}
+int ICACHE_FLASH_ATTR irLearnStop(struct espconn *conn)
+{
+	irLearnConn = NULL;
+	return 1;
+}
 void ICACHE_FLASH_ATTR irInit(void)
 {
 	char temp[64];

@@ -144,11 +144,11 @@ void user_init(void)
 	stledInit();
 	routesInit();
 	wifiInit();
-	
+
 #ifdef SHOW_HEAP_USE
 	os_timer_disarm(&heapUseReportTimer);
 	os_timer_setfn(&heapUseReportTimer, heapUseReportTimerCb, NULL);
-	os_timer_arm(&heapUseReportTimer, 15000, 1);
+	os_timer_arm(&heapUseReportTimer, 60000, 1);
 #endif
 	INFO("\nReady\n");
 }
