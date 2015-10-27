@@ -1,6 +1,6 @@
 # --------------- esphttpd config options ---------------
 
-ZMOTE_FIRMWARE_VERSION = "\"0.4.1\""
+ZMOTE_FIRMWARE_VERSION = "\"0.4.2\""
 
 ESP_DEV_HOME = $(abspath $(PWD)/../zmote-toolchain)
 
