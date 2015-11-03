@@ -33,13 +33,12 @@ static char postBeacon[] = "><-Status=Ready>";
 
 static struct espconn *udpConn = NULL;
 static struct espconn *tcpConn = NULL;
-static char reply[128];
 
 #define MATCH_AT_START(x, str) (os_strncmp(x, str, os_strlen(str)) == 0)
-static void ICACHE_FLASH_ATTR tcpRecvCb(void *arg, char *data, unsigned short len) 
+
+void ICACHE_FLASH_ATTR itach_command(const char *data, char *reply, int len, void (*cb)(char *))
 {
-	struct espconn *conn = arg;
-	INFO("TCP receive: >>%s<<", data);
+	INFO("iTach command: >>%s<<", data);
 	if (MATCH_AT_START(data, "getdevices")) {
 		os_strcpy(reply, "device,0,0 WIFI\rdevice,1,3 IR\rendlistdevices\r");
 	} else if (MATCH_AT_START(data, "getversion,")) {
@@ -69,18 +68,32 @@ static void ICACHE_FLASH_ATTR tcpRecvCb(void *arg, char *data, unsigned short le
 		irSendStop();
 		os_sprintf(reply, "%s\r", data);
 	} else if (MATCH_AT_START(data, "get_IRL")) {
-		if (irLearn(conn) <= 0)
+		if (irLearn(cb) <= 0)
 			os_sprintf(reply, "busyIR,1:1,0\r"); // FIXME
 		else
 			os_sprintf(reply, "IR Learner Enabled\r");
 	} else if (MATCH_AT_START(data, "stop_IRL")) {
-		irLearnStop(conn);
+		irLearnStop();
 		os_sprintf(reply, "IR Learner Disabled\r");
 	} else {
 err:
 		os_strcpy(reply, "unknowncommand,ERR_01\r");
 	}
-	INFO("Reply: >>\n%s\n<<", reply);
+	INFO("iTach Reply: >>\n%s\n<<", reply);
+}
+static char reply[128]; // Can't risk putting this in stack since espconn_send may need to retry at a later point
+struct espconn *incomingConn = NULL;
+static void ICACHE_FLASH_ATTR tcpReplyCb(char *reply)
+{
+	espconn_send(incomingConn, (uint8 *)reply, os_strlen(reply));
+
+}
+static void ICACHE_FLASH_ATTR tcpRecvCb(void *arg, char *data, unsigned short len) 
+{
+	struct espconn *conn = arg;
+	INFO("TCP receive: >>%s<<", data);
+	incomingConn = conn;
+	itach_command(data, reply, len, tcpReplyCb);
 	espconn_send(conn, (uint8 *)reply, strlen(reply));
 }
 static void ICACHE_FLASH_ATTR tcpReconCb(void *arg, sint8 err) 

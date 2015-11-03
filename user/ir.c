@@ -103,7 +103,8 @@ static IrCode *ICACHE_FLASH_ATTR parseSeq(const char *json, jsmntok_t *t, int *s
 		if (jsonEq(json, &t[j], "period")) {
 			code->period = jsonNum(json, &t[j+1]);
 		} else if (jsonEq(json, &t[j], "frequency")) {
-			code->period = 32768000000.0 / jsonNum(json, &t[j+1]);
+			//code->period = 32768000000.0 / jsonNum(json, &t[j+1]);
+			code->period = ((1000000u*0x1000u)/jsonNum(json, &t[j+1]))<<3u;
 		} else if (jsonEq(json, &t[j], "n")) {
 			code->n = jsonNum(json, &t[j+1]);
 		} else if (jsonEq(json, &t[j], "repeat")) {
@@ -335,7 +336,9 @@ static int ICACHE_FLASH_ATTR txCode(IrCode *code)
 	}
 	while (!checkFinished(code))  {
 		txOn(TX_GPIO, code->period, code->seq[code->cur]);
-		gap = (code->seq[code->cur+1]*code->period*2)>>16; // FIXME gap needs to be adjusted by acc error
+		//gap = (code->seq[code->cur+1]*code->period*2)>>16; // FIXME gap needs to be adjusted by acc error
+		gap = 2*((code->seq[code->cur+1]*(code->period>>16)) + 
+			((code->seq[code->cur+1]*(code->period&0xFFFF))>16));
 #ifdef DEBUG_IR_TX
 		code->np += code->seq[code->cur] + code->seq[code->cur+1];
 #endif
@@ -413,7 +416,7 @@ static void gpioInterrupt(void)  // Placed in IRAM (as opposed to ICACHE) FWIW
 	GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, status);
 }
 
-static struct espconn *irLearnConn = NULL;
+static void  (*irLearnCb)(char *) = NULL;
 static void ICACHE_FLASH_ATTR transmitLearnedCode(void)
 {
 	int i, n, big = 0;
@@ -425,7 +428,7 @@ static void ICACHE_FLASH_ATTR transmitLearnedCode(void)
 	if (big < 2)
 		return;
 	DEBUG("Probably got a full sequence");
-	if (!irLearnConn)
+	if (!irLearnCb)
 		return;
 
 	os_sprintf(sendir, "sendir,1:1,0,38400,1,1");
@@ -442,7 +445,7 @@ static void ICACHE_FLASH_ATTR transmitLearnedCode(void)
 	else
 		os_strcpy(sendir+n, "\r");
 	INFO("Got learned code: %s", sendir);
-	espconn_send(irLearnConn, (uint8 *)sendir, os_strlen(sendir));
+	irLearnCb(sendir);
 	rxLastCode[0] = 0;
 }
 static void ICACHE_FLASH_ATTR rxMonitor(void)
@@ -487,7 +490,7 @@ static void ICACHE_FLASH_ATTR rxMonitor(void)
 		lastTS = nextTS;
 	}
 	rxLastCode[ndx++] = 0; // xero marks the end
-	if (irLearnConn)
+	if (irLearnCb)
 		transmitLearnedCode();
 	// FIXME: Post to MQTT here
 	ReleaseMutex(&rxMutex);
@@ -592,19 +595,19 @@ int ICACHE_FLASH_ATTR irSendStop(void)
 {
 	return abortSend();
 }
-int ICACHE_FLASH_ATTR irLearn(struct espconn *conn)
+int ICACHE_FLASH_ATTR irLearn(void (*cb)(char *))
 {
 	if (!GetMutex(&rxMutex))
 		return -1;
 	rxReadNdx = rxTriggerNdx;
-	irLearnConn = conn;
+	irLearnCb = cb;
 	rxLastCode[0] = 0;
 	ReleaseMutex(&rxMutex);
 	return 1;
 }
-int ICACHE_FLASH_ATTR irLearnStop(struct espconn *conn)
+int ICACHE_FLASH_ATTR irLearnStop(void)
 {
-	irLearnConn = NULL;
+	irLearnCb = NULL;
 	return 1;
 }
 void ICACHE_FLASH_ATTR irInit(void)

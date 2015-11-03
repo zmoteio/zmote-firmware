@@ -8,6 +8,7 @@
 #include "rest_utils.h"
 #include "routes.h"
 #include "updatefs.h"
+#include "itach.h"
 
 static MQTT_Client mqttClient;
 static enum {
@@ -180,6 +181,10 @@ static void ICACHE_FLASH_ATTR updatefs_cb(void *arg, int status)
     else
         INFO("FS Update completed successfully");
 }
+static void ICACHE_FLASH_ATTR mqttReplyCb(char *reply)
+{
+    mqttPub(reply);
+}
 static void ICACHE_FLASH_ATTR mqttDataCb(uint32_t *args, const char* topic, uint32_t topic_len, const char *data, uint32_t data_len)
 {
     jsmn_parser p;
@@ -188,6 +193,13 @@ static void ICACHE_FLASH_ATTR mqttDataCb(uint32_t *args, const char* topic, uint
     int i, ntoks;
 
     INFO("Receive topic: %20s, data: %s", topic, data);
+    if (data[0] != '{' && data[0] != '[') { // Not a json command
+        // Interprest as iTach
+        char reply[128];
+        itach_command(data, reply, data_len, mqttReplyCb);
+        mqttPub(reply);
+        return;
+    }
     jsmn_init(&p);
     if ((ntoks = jsmn_parse(&p, data, data_len, NULL, 0)) <= 0) {
         ERROR("json parse error %d", ntoks);
