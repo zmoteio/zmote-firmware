@@ -4,6 +4,7 @@
 #include "rest_utils.h"
 #include "console.h"
 #include "mutex.h"
+#include "mqttclient.h"
 #include "zmote_config.h"
 
 #define TX_GPIO 2
@@ -45,6 +46,7 @@ static uint8 rxTriggerNdx = 0, rxReadNdx = 0;
 static uint16 rxLastCode[256]; // in delta us; zero marks the end
 static ETSTimer rxTimer; // Timeout on receive
 static mutex_t rxMutex; // Protects access to last code
+static bool irMonitor = false; // Enables reporting over mqtt
 
 // Tx related globals
 static mutex_t txMutex;
@@ -103,7 +105,8 @@ static IrCode *ICACHE_FLASH_ATTR parseSeq(const char *json, jsmntok_t *t, int *s
 		if (jsonEq(json, &t[j], "period")) {
 			code->period = jsonNum(json, &t[j+1]);
 		} else if (jsonEq(json, &t[j], "frequency")) {
-			code->period = 32768000000.0 / jsonNum(json, &t[j+1]);
+			//code->period = 32768000000.0 / jsonNum(json, &t[j+1]);
+			code->period = ((1000000u*0x1000u)/jsonNum(json, &t[j+1]))<<3u;
 		} else if (jsonEq(json, &t[j], "n")) {
 			code->n = jsonNum(json, &t[j+1]);
 		} else if (jsonEq(json, &t[j], "repeat")) {
@@ -335,11 +338,9 @@ static int ICACHE_FLASH_ATTR txCode(IrCode *code)
 	}
 	while (!checkFinished(code))  {
 		txOn(TX_GPIO, code->period, code->seq[code->cur]);
-		// FIXME: gap needs to be adjusted by acc error
-		// NOTE: Split to prevent overflow
-		// gap = (code->seq[code->cur+1]*code->period*2)>>16;
-		gap =  (code->seq[code->cur+1] * (code->period >> 15))
-		    + ((code->seq[code->cur+1] * (code->period & 0x7FFF)) >> 15);
+		//gap = (code->seq[code->cur+1]*code->period*2)>>16; // FIXME gap needs to be adjusted by acc error
+		gap = 2*((code->seq[code->cur+1]*(code->period>>16)) + 
+			((code->seq[code->cur+1]*(code->period&0xFFFF))>>16));
 #ifdef DEBUG_IR_TX
 		code->np += code->seq[code->cur] + code->seq[code->cur+1];
 #endif
@@ -417,7 +418,7 @@ static void gpioInterrupt(void)  // Placed in IRAM (as opposed to ICACHE) FWIW
 	GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, status);
 }
 
-static struct espconn *irLearnConn = NULL;
+static void  (*irLearnCb)(char *) = NULL;
 static void ICACHE_FLASH_ATTR transmitLearnedCode(void)
 {
 	int i, n, big = 0;
@@ -429,7 +430,7 @@ static void ICACHE_FLASH_ATTR transmitLearnedCode(void)
 	if (big < 2)
 		return;
 	DEBUG("Probably got a full sequence");
-	if (!irLearnConn)
+	if (!irLearnCb && !irMonitor)
 		return;
 
 	os_sprintf(sendir, "sendir,1:1,0,38400,1,1");
@@ -446,7 +447,29 @@ static void ICACHE_FLASH_ATTR transmitLearnedCode(void)
 	else
 		os_strcpy(sendir+n, "\r");
 	INFO("Got learned code: %s", sendir);
-	espconn_send(irLearnConn, (uint8 *)sendir, os_strlen(sendir));
+	if (irLearnCb) {
+		irLearnCb(sendir);
+		rxLastCode[0] = 0;
+		return;
+	}
+	os_sprintf(sendir, "{\"frequency\":38400,\"seq\":[");
+	for (i = 0; i < sizeof(rxLastCode)/sizeof(rxLastCode[0]) && rxLastCode[i]; i++) {
+		if (!rxLastCode[i])
+			break;
+		n = os_strlen(sendir);
+		if (n > sizeof(sendir) - 8)
+			break;
+		// 38400/1e6 * 65536 == 2516.58
+		os_sprintf(sendir+n, "%s%u", i?",":"", (rxLastCode[i]*2517u + 0x7FFFu)>>16u);
+	}
+	n = os_strlen(sendir);
+	if (i&1) {
+		os_strcpy(sendir+n, ",3692");
+		i++;
+	}
+	n = os_strlen(sendir);
+	os_sprintf(sendir+n, "],\"n\":%d,\"repeat\":[0,0,%d]}", i, i);
+	mqttPub(sendir); 
 	rxLastCode[0] = 0;
 }
 static void ICACHE_FLASH_ATTR rxMonitor(void)
@@ -491,7 +514,8 @@ static void ICACHE_FLASH_ATTR rxMonitor(void)
 		lastTS = nextTS;
 	}
 	rxLastCode[ndx++] = 0; // xero marks the end
-	if (irLearnConn)
+	INFO("Got code %d irLearnCb=%x irMonitor=%d", ndx, (uint32)irLearnCb, irMonitor);
+	if (irLearnCb || irMonitor)
 		transmitLearnedCode();
 	// FIXME: Post to MQTT here
 	ReleaseMutex(&rxMutex);
@@ -596,19 +620,19 @@ int ICACHE_FLASH_ATTR irSendStop(void)
 {
 	return abortSend();
 }
-int ICACHE_FLASH_ATTR irLearn(struct espconn *conn)
+int ICACHE_FLASH_ATTR irLearn(void (*cb)(char *))
 {
 	if (!GetMutex(&rxMutex))
 		return -1;
 	rxReadNdx = rxTriggerNdx;
-	irLearnConn = conn;
+	irLearnCb = cb;
 	rxLastCode[0] = 0;
 	ReleaseMutex(&rxMutex);
 	return 1;
 }
-int ICACHE_FLASH_ATTR irLearnStop(struct espconn *conn)
+int ICACHE_FLASH_ATTR irLearnStop(void)
 {
-	irLearnConn = NULL;
+	irLearnCb = NULL;
 	return 1;
 }
 void ICACHE_FLASH_ATTR irInit(void)
@@ -622,6 +646,8 @@ void ICACHE_FLASH_ATTR irInit(void)
 		maxRepeat = atoi(temp);
 	if (cfgGet("ir_rx_timeout", temp, sizeof(temp)))
 		rxTimeout = atoi(temp);
+	if (cfgGet("ir_monitor", temp, sizeof(temp)))
+		irMonitor = atoi(temp)?true:false;
 
 	CreateMutux(&txMutex);
 	CreateMutux(&rxMutex);
