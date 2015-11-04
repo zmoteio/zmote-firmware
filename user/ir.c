@@ -4,6 +4,7 @@
 #include "rest_utils.h"
 #include "console.h"
 #include "mutex.h"
+#include "mqttclient.h"
 #include "zmote_config.h"
 
 #define TX_GPIO 2
@@ -45,6 +46,7 @@ static uint8 rxTriggerNdx = 0, rxReadNdx = 0;
 static uint16 rxLastCode[256]; // in delta us; zero marks the end
 static ETSTimer rxTimer; // Timeout on receive
 static mutex_t rxMutex; // Protects access to last code
+static bool irMonitor = false; // Enables reporting over mqtt
 
 // Tx related globals
 static mutex_t txMutex;
@@ -428,7 +430,7 @@ static void ICACHE_FLASH_ATTR transmitLearnedCode(void)
 	if (big < 2)
 		return;
 	DEBUG("Probably got a full sequence");
-	if (!irLearnCb)
+	if (!irLearnCb && !irMonitor)
 		return;
 
 	os_sprintf(sendir, "sendir,1:1,0,38400,1,1");
@@ -445,7 +447,29 @@ static void ICACHE_FLASH_ATTR transmitLearnedCode(void)
 	else
 		os_strcpy(sendir+n, "\r");
 	INFO("Got learned code: %s", sendir);
-	irLearnCb(sendir);
+	if (irLearnCb) {
+		irLearnCb(sendir);
+		rxLastCode[0] = 0;
+		return;
+	}
+	os_sprintf(sendir, "{\"frequency\":38400,\"seq\":[");
+	for (i = 0; i < sizeof(rxLastCode)/sizeof(rxLastCode[0]) && rxLastCode[i]; i++) {
+		if (!rxLastCode[i])
+			break;
+		n = os_strlen(sendir);
+		if (n > sizeof(sendir) - 8)
+			break;
+		// 38400/1e6 * 65536 == 2516.58
+		os_sprintf(sendir+n, "%s%u", i?",":"", (rxLastCode[i]*2517u + 0x7FFFu)>>16u);
+	}
+	n = os_strlen(sendir);
+	if (i&1) {
+		os_strcpy(sendir+n, ",3692");
+		i++;
+	}
+	n = os_strlen(sendir);
+	os_sprintf(sendir+n, "],\"n\":%d,\"repeat\":[0,0,%d]}", i, i);
+	mqttPub(sendir); 
 	rxLastCode[0] = 0;
 }
 static void ICACHE_FLASH_ATTR rxMonitor(void)
@@ -490,7 +514,8 @@ static void ICACHE_FLASH_ATTR rxMonitor(void)
 		lastTS = nextTS;
 	}
 	rxLastCode[ndx++] = 0; // xero marks the end
-	if (irLearnCb)
+	INFO("Got code %d irLearnCb=%x irMonitor=%d", ndx, (uint32)irLearnCb, irMonitor);
+	if (irLearnCb || irMonitor)
 		transmitLearnedCode();
 	// FIXME: Post to MQTT here
 	ReleaseMutex(&rxMutex);
@@ -621,6 +646,8 @@ void ICACHE_FLASH_ATTR irInit(void)
 		maxRepeat = atoi(temp);
 	if (cfgGet("ir_rx_timeout", temp, sizeof(temp)))
 		rxTimeout = atoi(temp);
+	if (cfgGet("ir_monitor", temp, sizeof(temp)))
+		irMonitor = atoi(temp)?true:false;
 
 	CreateMutux(&txMutex);
 	CreateMutux(&rxMutex);

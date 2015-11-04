@@ -10,7 +10,8 @@ var argv = require('yargs')
     .command('check', 'Check if connected zmote as been correctly blessed[*]')
     .command('ota_cycle', 'OTA cycle test (see --nupdate and --nupdatefs)')
     .command('fs_update_cycle', 'FS update test (see --nupdatefs)')
-    .command('\t[*]', 'By "connected" we mean a USB-to-UART connection via CH340g')
+    .command('monitor', 'Listen to all messages on the MQTT server')
+    .command('\t[*]', 'By "connected" here we mean a USB-to-UART connection via CH340g')
     .demand(1)
     .example('$0 bless --keep-fw', 'Create binary to bless zmote')
     /*.demand('f')
@@ -452,7 +453,23 @@ function serveHttp(nfiles) {
     //argv.port++;
     return fserveDone;
 }
-
+function mqttMonitor() {
+    return connectDB()
+        .then(function() {
+            return mqttConnect();
+        })
+        .then(function(client) {
+            client.on('message', function (topic, msg) {
+                console.log(topic, msg.toString());
+            });
+            console.log("Waiting for messages. Ctrl+C to exit");
+            if (argv.chipid)
+                client.subscribe(["zmote/widget/"+argv.chipid,  "zmote/towidget/"+argv.chipid]);
+            else
+                client.subscribe("zmote/#");
+            return Q.defer().promise;
+        });
+}
 function zmoteUpdate() {
     var fserveDone;
     return connectDB()
@@ -587,6 +604,8 @@ function runOp(op) {
             return updateFSCycle(argv.nupdatefs);
         case 'ota_cycle':
             return updateCycle(argv.nupdate);
+        case 'monitor':
+            return mqttMonitor();
         case 'help':
         default:
             return help();
