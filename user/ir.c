@@ -335,7 +335,11 @@ static int ICACHE_FLASH_ATTR txCode(IrCode *code)
 	}
 	while (!checkFinished(code))  {
 		txOn(TX_GPIO, code->period, code->seq[code->cur]);
-		gap = (code->seq[code->cur+1]*code->period*2)>>16; // FIXME gap needs to be adjusted by acc error
+		// FIXME: gap needs to be adjusted by acc error
+		// NOTE: Split to prevent overflow
+		// gap = (code->seq[code->cur+1]*code->period*2)>>16;
+		gap =  (code->seq[code->cur+1] * (code->period >> 15))
+		    + ((code->seq[code->cur+1] * (code->period & 0x7FFF)) >> 15);
 #ifdef DEBUG_IR_TX
 		code->np += code->seq[code->cur] + code->seq[code->cur+1];
 #endif
