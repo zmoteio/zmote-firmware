@@ -1,6 +1,6 @@
 # --------------- esphttpd config options ---------------
 
-ZMOTE_FIRMWARE_VERSION = "\"0.5.0\""
+ZMOTE_FIRMWARE_VERSION = "\"0.6.0\""
 
 ESP_DEV_HOME = $(abspath $(PWD)/../zmote-toolchain)
 
@@ -8,7 +8,7 @@ ESPTOOL2      ?= $(PWD)/rboot/esptool2/esptool2.exe
 FW_SECTS      = .text .data .rodata
 FW_USER_ARGS  = -quiet -bin -boot2
 
-SDK_BASE      ?= $(ESP_DEV_HOME)/esp_iot_sdk_v1.3.0
+SDK_BASE      ?= $(ESP_DEV_HOME)/esp_iot_sdk_v1.5.0
 
 XTENSA_TOOLS_ROOT ?= $(ESP_DEV_HOME)/xtensa-lx106-elf/bin
 

@@ -13,13 +13,13 @@ MODULES		= user
 EXTRA_INCDIR	= include libesphttpd/include libmqtt/mqtt/include rboot/rboot
 
 #Add in esphttpd and mqtt libs
-EXTRA_LIBS = esphttpd mqtt
+EXTRA_LIBS = esphttpd mqtt 
 
 
 # libraries used in this project, mainly provided by the SDK
-LIBS		= c gcc hal phy pp net80211 wpa main lwip $(EXTRA_LIBS)
+LIBS		= c gcc hal phy pp net80211 wpa main lwip crypto $(EXTRA_LIBS)
 # compiler flags using during compilation of source files
-CFLAGS		+= -Os -ggdb -Werror -Wpointer-arith -Wundef -Wall -Wl,-EL -fno-inline-functions \
+CFLAGS		+= -Os -ggdb -Wpointer-arith -Wundef -Wall -Wl,-EL -fno-inline-functions \
 		-nostdlib -mlongcalls -mtext-section-literals  -D__ets__ -DICACHE_FLASH -D_STDINT_H \
 		-Wno-address
 
@@ -112,7 +112,9 @@ $(ESPTOOL2): rboot/Makefile
 
 $(BUILD_DIR)/%.elf: $(APP_AR)
 	$(vecho) "LD $@"
-	$(Q) $(LD) -L$(SDK_LIBDIR) -L$(SDK_LDDIR) -Trboot/rboot-sampleproject/$(notdir $(basename $@)).ld $(LDFLAGS) -Wl,--start-group $(LIBS) $^ -Wl,--end-group -o $@
+	$(Q) $(LD) -L$(SDK_LIBDIR) -L$(SDK_LDDIR) -Trboot/rboot-sampleproject/$(notdir $(basename $@)).ld \
+		$(LDFLAGS) -Wl,--start-group $(LIBS) $^ -Wl,--end-group \
+		-Wl,-Map=$(FW_BASE)/$(notdir $(basename $@)).map -o $@
 
 $(FW_BASE)/%.bin: $(BUILD_DIR)/%.elf
 	@echo "FW $(notdir $@)"
