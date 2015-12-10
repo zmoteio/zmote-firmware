@@ -1,6 +1,6 @@
 # --------------- esphttpd config options ---------------
 
-ZMOTE_FIRMWARE_VERSION = "\"0.5.0\""
+ZMOTE_FIRMWARE_VERSION = "\"0.5.1\""
 
 ESP_DEV_HOME = $(abspath $(PWD)/../zmote-toolchain)
 
@@ -48,7 +48,7 @@ SHOW_HEAP_USE ?= yes
 
 WEB_DIR ?= ./html
 
-CFLAGS = -DZMOTE_CFG_SECTOR=0x80 -DUSE_US_TIMER -DZMOTE_FIRMWARE_VERSION=$(ZMOTE_FIRMWARE_VERSION) -DZMOTE_FIRMWARE_COMMIT="\"$(shell git log | head -1 | awk '{print $$2}')\"" 
+CFLAGS = -DZMOTE_CFG_SECTOR=0x80 -DUSE_US_TIMER -DZMOTE_FIRMWARE_VERSION=$(ZMOTE_FIRMWARE_VERSION) -DZMOTE_FIRMWARE_COMMIT="\"$(shell git log | head -1 | awk '{print $$2}')\""
 
 ifeq ($(BUILD), nodemcu)
 	CFLAGS += -DINVERT_IR_TX -DENABLE_UART_DEBUG -DZMOTE_FIRMWARE_BUILD=\"nodemcu\"

@@ -32,8 +32,9 @@ int myPassFn(HttpdConnData *connData, int no, char *user, int userLen, char *pas
 #endif
 
 #define STA_MAC_ADDR_MARKER "/xx-yy-zz-pp-qq-rr"
+static int ICACHE_FLASH_ATTR apRedirect(HttpdConnData *connData);
 static HttpdBuiltInUrl builtInUrls[] = {
-	{"/", cgiRedirectApClientToHostname, "zmote.io"},
+	{"/", apRedirect, "zmote.io"},
 	{"/", cgiRedirect, "/index.html"},
 
 	//Enable the line below to protect the WiFi configuration with an username/password combo.
@@ -57,7 +58,27 @@ static HttpdBuiltInUrl builtInUrls[] = {
 	{"*", cfgFile, NULL}, //Catch-all cgi function for the filesystem
 	{NULL, NULL, NULL}
 };
-
+static const char *httpNotFoundHeader="HTTP/1.0 404 Not Found\r\nServer: esp8266-httpd/"HTTPDVER"\r\nConnection: close\r\nContent-Type: text/plain\r\nContent-Length: 12\r\n\r\nNot Found.\r\n";
+static int ICACHE_FLASH_ATTR apRedirect(HttpdConnData *connData) {
+    uint32 *remadr;
+    struct ip_info apip;
+    int x=wifi_get_opmode();
+    //Check if we have an softap interface; bail out if not
+    if (x!=2 && x!=3) return HTTPD_CGI_NOTFOUND;
+    if (os_strcmp(connData->hostName, "zmote.io") && os_strcmp(connData->hostName, "www.zmote.io")) {
+        // Req not for zmote.io
+        // Return 404 not found
+        httpdSend(connData, httpNotFoundHeader, -1);
+        return HTTPD_CGI_DONE;
+    }
+    remadr=(uint32 *)connData->conn->proto.tcp->remote_ip;
+    wifi_get_ip_info(SOFTAP_IF, &apip);
+    if ((*remadr & apip.netmask.addr) == (apip.ip.addr & apip.netmask.addr)) {
+        return cgiRedirectToHostname(connData);
+    } else {
+        return HTTPD_CGI_NOTFOUND;
+    }
+}
 static int ICACHE_FLASH_ATTR fixPostData(char *postBuf, int len)
 {
 	int i = 0, j = 0;
@@ -73,7 +94,7 @@ static int ICACHE_FLASH_ATTR fixPostData(char *postBuf, int len)
 	return i;
 }
 
-void ICACHE_FLASH_ATTR	execRoute(const char *url, const char *method, 
+void ICACHE_FLASH_ATTR	execRoute(const char *url, const char *method,
 	const char *postBuf, int pbLen, char *response, int repLen)
 {
 	int i, n;
@@ -131,9 +152,9 @@ void ICACHE_FLASH_ATTR	execRoute(const char *url, const char *method,
 	connData->priv = (void *)response;
 	connData->post = postData;
 	if (pbLen) {
-		postData->len = 
+		postData->len =
 				postData->buffSize =
-				postData->buffLen = 
+				postData->buffLen =
 				postData->received = pbLen;
 		postData->buff = (char *)postBuf;
 	}
