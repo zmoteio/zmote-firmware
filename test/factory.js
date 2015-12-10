@@ -207,6 +207,7 @@ function zmoteBless() {
             var config = {
                 serial: widget._id,
                 secret: secret(),
+                chipID: state.chipID,
                 mqtt_server: argv.mqtt.split(':')[0],
                 mqtt_port: argv.mqtt.split(':')[1],
                 mqtt_keepalive: 90

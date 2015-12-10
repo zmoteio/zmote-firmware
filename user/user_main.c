@@ -82,14 +82,25 @@ static void ICACHE_FLASH_ATTR heapUseReportTimerCb()
 
 static void ICACHE_FLASH_ATTR writeConfigVars(void)
 {
-	char temp[64];
+	char temp[64],temp2[64];
 	uint8 mac[6];
 	struct softap_config ap_config;
 	bool doInit = false;
 
+	// Protection to disable simple flash copy
+	if (cfgGet("chipID", temp, sizeof(temp))) {
+		os_sprintf(temp2, "%08x", system_get_chip_id());
+		if (os_strcmp(temp, temp2)) {
+			ERROR("Bad flash. Hang");
+			while (1)
+				;
+		}
+	}
+	
+
 	// Init happens on first flashing and after each OTA update
 	// We use commit ID to check for difference in version
-	if (!cfgGet("chipID", temp, sizeof(temp)))
+	if (!cfgGet("flashID", temp, sizeof(temp)))
 		doInit = true;
 	else if (!cfgGet("commit", temp, sizeof(temp)))
 		doInit = true;
