@@ -4,6 +4,7 @@ var argv = require('yargs')
 
 .usage('Usage: $0 <command> [options]')
     .command('bless', 'Create bless firmware and (optionally) write it to connected zmote[*]')
+    .command('force', 'Re-bless an already bless zmote')
     .command('list', 'List zmotes in the network')
     .command('update', 'Trigger f/w update for zmote in the network')
     .command('updatefs', 'Push new file system to widget')
@@ -87,7 +88,12 @@ else if (argv._.length > 1) {
 function fixDB() {
     var db = argv.db;
     if (!db) {
+        var dbf = argv.auth+"_db";
         console.log("Getting DB credentials...");
+        if (fs.existsSync(dbf)) {
+            argv.db = JSON.parse(fs.readFileSync(dbf)).db;
+            return argv.db;
+        }
         cproc.execSync('heroku config:get -a ' + argv.herokuApp + ' MONGOLAB_URI')
             .toString()
             .split('\r\n')
@@ -98,6 +104,7 @@ function fixDB() {
         if (!db)
             throw (new Error("Can't find mongoDB URI.  Login to heroku first?" + l));
         argv.db = db;
+        fs.writeFileSync(dbf, JSON.stringify({db: db}));
     }
     return db;
 }
@@ -195,9 +202,11 @@ function zmoteBless() {
                 return new Widget({
                     chipID: state.chipID
                 });
-            else if (w.length == 1)
-                return w[0];
-            else
+            else if (w.length == 1) {
+                if (argv.force)
+                    return w[0];
+                throw (new Error("zmote with chipID "+state.chipID+" has a prior DB entry. Check! Use --force if certain"));
+            } else
                 throw (new Error("More than one widget with chip ID found.  Fix DB first"));
         })
         .then(function(widget) {

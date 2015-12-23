@@ -40,13 +40,13 @@ typedef struct IrCode_ {
 } IrCode;
 
 // Rx related globals: Interrupt is not re-entrant (I hope)
-static uint32 rxTrigger[256];
+static uint32 *rxTrigger = NULL;
 static uint8 rxTriggerNdx = 0, rxReadNdx = 0;
 
-static uint16 rxLastCode[256]; // in delta us; zero marks the end
+static uint16 *rxLastCode = NULL; // in delta us; zero marks the end
 static ETSTimer rxTimer; // Timeout on receive
 static mutex_t rxMutex; // Protects access to last code
-static bool irMonitor = false; // Enables reporting over mqtt
+static bool irMonitor = false, irMonitorSvd; // Enables reporting over mqtt
 
 // Tx related globals
 static mutex_t txMutex;
@@ -55,7 +55,10 @@ static IrCode **txArray = NULL;  // txArray is NULL terminated
 static ETSTimer txAbortTimer; // Needed when mutex is unavailable to abort
 
 // Config variables read at startup (FIXME not done yet)
-static uint32 maxBusyWait = 10000 /* us */, rxTimeout = 500 /* ms */;
+static uint32 maxBusyWait = 10000, /* us; timer is used beyond this */
+	minRecvGap = 7000, /*us; two such gaps are needed to recognize complete code */
+	rxTimeout = 500, /* ms; any gap beyonm this is an indication of a new code sequence start */
+	nRecvCodes = 256 /* Number of codes to capture */;
 static int maxRepeat = 20;
 
 static int  ICACHE_FLASH_ATTR readSeq(uint16 *p, const char *json, jsmntok_t *t)
@@ -413,6 +416,8 @@ static void gpioInterrupt(void)  // Placed in IRAM (as opposed to ICACHE) FWIW
 	status = GPIO_REG_READ(GPIO_STATUS_ADDRESS);
 	if (status & (1u << RX_GPIO)) {
 		rxTrigger[rxTriggerNdx++] = now;
+		if (rxTriggerNdx == nRecvCodes)
+			rxTriggerNdx = 0;
 	}
 	//clear interrupt status
 	GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, status);
@@ -423,8 +428,8 @@ static void ICACHE_FLASH_ATTR transmitLearnedCode(void)
 {
 	int i, n, big = 0;
 	char sendir[512];
-	for (i = 0; i < sizeof(rxLastCode)/sizeof(rxLastCode[0]) && big < 2 && rxLastCode[i]; i++)
-		if (rxLastCode[i] > maxBusyWait)
+	for (i = 0; i < nRecvCodes && big < 2 && rxLastCode[i]; i++)
+		if (rxLastCode[i] > minRecvGap)
 			++big;
 	DEBUG("Code=%d big=%d", i, big);
 	if (big < 2)
@@ -434,7 +439,7 @@ static void ICACHE_FLASH_ATTR transmitLearnedCode(void)
 		return;
 
 	os_sprintf(sendir, "sendir,1:1,0,38400,1,1");
-	for (i = 0; i < sizeof(rxLastCode)/sizeof(rxLastCode[0]) && rxLastCode[i]; i++) {
+	for (i = 0; i < nRecvCodes && rxLastCode[i]; i++) {
 		n = os_strlen(sendir);
 		if (n > sizeof(sendir) - 8)
 			break;
@@ -453,7 +458,7 @@ static void ICACHE_FLASH_ATTR transmitLearnedCode(void)
 		return;
 	}
 	os_sprintf(sendir, "{\"frequency\":38400,\"seq\":[");
-	for (i = 0; i < sizeof(rxLastCode)/sizeof(rxLastCode[0]) && rxLastCode[i]; i++) {
+	for (i = 0; i < nRecvCodes && rxLastCode[i]; i++) {
 		if (!rxLastCode[i])
 			break;
 		n = os_strlen(sendir);
@@ -485,7 +490,9 @@ static void ICACHE_FLASH_ATTR rxMonitor(void)
 	//INFO("Mutex Busy");
 		return;
 	}
-	ncodes = (rxTriggerNdx - rxReadNdx)&0xFFu;
+	ncodes = rxTriggerNdx - rxReadNdx;
+	if (ncodes < 0)
+		ncodes += nRecvCodes; // Modulo arithmetic for circular buffer
 	if (ncodes < 2 ) { // No pulses accumulated
 		ReleaseMutex(&rxMutex);
 		os_timer_disarm(&rxTimer);
@@ -494,7 +501,10 @@ static void ICACHE_FLASH_ATTR rxMonitor(void)
 	//INFO("No codes %d", ncodes);
 		return;
 	}
-	lastTS = rxTrigger[(rxTriggerNdx - 1u)&0xFFu];
+	if (rxTriggerNdx > 0)
+		lastTS = rxTrigger[rxTriggerNdx - 1u];
+	else
+		lastTS = rxTrigger[nRecvCodes - 1u];
 	nextTS = system_get_time();
 	if (nextTS - lastTS < rxTimeout*1000) { // Not timeout yet
 		ReleaseMutex(&rxMutex);
@@ -507,8 +517,12 @@ static void ICACHE_FLASH_ATTR rxMonitor(void)
 	INFO("Got codes=%d [%d,%d]", ncodes, rxReadNdx, rxTriggerNdx);
 	lastTS = rxTrigger[rxReadNdx];
 	++rxReadNdx;
+	if (rxReadNdx == nRecvCodes)
+		rxReadNdx = 0;
 	while (rxReadNdx != rxTriggerNdx) {
 		nextTS = rxTrigger[rxReadNdx++];
+		if (rxReadNdx == nRecvCodes)
+			rxReadNdx = 0;
 		rxLastCode[ndx++] =  nextTS - lastTS;
 		//INFO("    code[%d] = %d", ndx - 1, rxLastCode[ndx-1]);
 		lastTS = nextTS;
@@ -517,7 +531,6 @@ static void ICACHE_FLASH_ATTR rxMonitor(void)
 	INFO("Got code %d irLearnCb=%x irMonitor=%d", ndx, (uint32)irLearnCb, irMonitor);
 	if (irLearnCb || irMonitor)
 		transmitLearnedCode();
-	// FIXME: Post to MQTT here
 	ReleaseMutex(&rxMutex);
 	os_timer_disarm(&rxTimer);
 	os_timer_setfn(&rxTimer, (os_timer_func_t *)rxMonitor, 0);
@@ -548,6 +561,8 @@ int ICACHE_FLASH_ATTR irOps(HttpdConnData *connData)
 			sendOK(connData, "busy");
 		} else {
 			rxLastCode[0] = 0;
+			irMonitorSvd = irMonitor;
+			irMonitor = false;
 			ReleaseMutex(&rxMutex);
 			sendOK(connData, "ok");
 		}
@@ -558,12 +573,15 @@ int ICACHE_FLASH_ATTR irOps(HttpdConnData *connData)
 		}
 		sendJSON(connData);
 		HTTPD_SEND_STR("{\"status\":\"ok\",\"trigger\":[");
-		for (i = 0; i < sizeof(rxLastCode)/sizeof(rxLastCode[0]); i++) {
+		for (i = 0; i < nRecvCodes; i++) {
 			if (!rxLastCode[i])
 				break;
 			HTTPD_PRINTF("%s%u", i?",":"", rxLastCode[i]);
 		}
 		HTTPD_SEND_STR("]}\r\n");
+		INFO("Got %d/%d codes", i, nRecvCodes);
+		if (i > 2)
+			irMonitor = irMonitorSvd;
 		ReleaseMutex(&rxMutex);
 	} else if (URL_IS("/api/ir/write")) {
 		if (txArray || !GetMutex(&txMutex)) {
@@ -642,13 +660,23 @@ void ICACHE_FLASH_ATTR irInit(void)
 
 	if (cfgGet("ir_max_busy_wait", temp, sizeof(temp)))
 		maxBusyWait = atoi(temp);
+	if (cfgGet("ir_min_recv_gap", temp, sizeof(temp)))
+		minRecvGap = atoi(temp);
 	if (cfgGet("ir_max_repeat", temp, sizeof(temp)))
 		maxRepeat = atoi(temp);
 	if (cfgGet("ir_rx_timeout", temp, sizeof(temp)))
 		rxTimeout = atoi(temp);
 	if (cfgGet("ir_monitor", temp, sizeof(temp)))
 		irMonitor = atoi(temp)?true:false;
+	if (cfgGet("ir_n_recv_codes", temp, sizeof(temp)))
+		nRecvCodes = atoi(temp);
 
+	if (!(rxTrigger = os_zalloc(nRecvCodes*sizeof(rxTrigger[0]))) ||
+		!(rxLastCode = os_zalloc(nRecvCodes*sizeof(rxLastCode[0])))) {
+		ERROR("Mem failure");
+		while (1)
+			;
+	}
 	CreateMutux(&txMutex);
 	CreateMutux(&rxMutex);
 
@@ -664,5 +692,6 @@ void ICACHE_FLASH_ATTR irInit(void)
 	ETS_GPIO_INTR_ATTACH(gpioInterrupt, NULL); 
 	gpio_pin_intr_state_set(GPIO_ID_PIN(RX_GPIO), GPIO_PIN_INTR_ANYEDGE);
 	ETS_GPIO_INTR_ENABLE();
+
 	rxMonitor(); // Kick off the monitor
 }
