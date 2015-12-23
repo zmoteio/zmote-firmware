@@ -99,7 +99,7 @@ function fixDB() {
             .split('\r\n')
             .forEach(function(l) {
                 if (l.match(/^mongodb:\/\//))
-                    db = l;
+                    db = l.replace(/\s*$/, '');
             });
         if (!db)
             throw (new Error("Can't find mongoDB URI.  Login to heroku first?" + l));
