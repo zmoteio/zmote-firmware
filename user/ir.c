@@ -121,8 +121,8 @@ static IrCode *ICACHE_FLASH_ATTR parseSeq(const char *json, jsmntok_t *t, int *s
 		} else if (jsonEq(json, &t[j], "seq")) {
 			readSeq(code->seq, json, &t[j+1]);
 		} else {
-			ERROR("BAD token %d,%d: type=%d [%d,%d] sz=%d", i, j, t[j].type, t[j].start, t[j].end, t[j].size);
-			goto err;
+			WARN("BAD token %d,%d: type=%d [%d,%d] sz=%d", i, j, t[j].type, t[j].start, t[j].end, t[j].size);
+			//goto err;
 		}
 	}
 	if (!code->period || !code->n) {
