@@ -115,6 +115,23 @@ static void ICACHE_FLASH_ATTR wifiConfigConnect()
 	wifi_station_set_config(&stconf);
 	system_restart();
 }
+#ifndef ENABLE_WPS
+static void ICACHE_FLASH_ATTR wifiDisSoftAP(void)
+{
+	if (nConnected <= 0) {
+		INFO("Disabling softAP");
+		wifi_set_opmode_current(STATION_MODE);
+		if (wifiState != WIFI_CONNECTED)
+			stledSet(STLED_OFF);
+	} else {
+		// Check again after 3 minutes
+		INFO("softAP can't be diabled due to connected client %d", nConnected);
+		os_timer_disarm(&apTimer);
+		os_timer_setfn(&apTimer, (os_timer_func_t *)wifiDisSoftAP, NULL);
+		os_timer_arm(&apTimer, 3*60*1000, 0);
+	}
+}
+#endif
 
 int ICACHE_FLASH_ATTR wifiConfig(HttpdConnData *connData)
 {
@@ -285,6 +302,10 @@ void ICACHE_FLASH_ATTR wifiEventCB(System_Event_t *evt)
 		WARN("connect to ssid %s, channel %d",
 		          evt->event_info.connected.ssid,
 		          evt->event_info.connected.channel);
+#ifndef ENABLE_WPS
+		os_timer_disarm(&apTimer);
+		wifiDisSoftAP();
+#endif
 		break;
 	case EVENT_STAMODE_DISCONNECTED:
 		nConnFailed++;
@@ -439,24 +460,6 @@ static ICACHE_FLASH_ATTR void wifiWPSStart(void)
 		stledSet(STLED_BLINK_HB);
 	}
 
-}
-#endif
-
-#ifndef ENABLE_WPS
-static void ICACHE_FLASH_ATTR wifiDisSoftAP(void)
-{
-	if (nConnected <= 0) {
-		INFO("Disabling softAP");
-		wifi_set_opmode_current(STATION_MODE);
-		if (wifiState != WIFI_CONNECTED)
-			stledSet(STLED_OFF);
-	} else {
-		// Check again after 3 minutes
-		INFO("softAP can't be diabled due to connected client %d", nConnected);
-		os_timer_disarm(&apTimer);
-		os_timer_setfn(&apTimer, (os_timer_func_t *)wifiDisSoftAP, NULL);
-		os_timer_arm(&apTimer, 3*60*1000, 0);
-	}
 }
 #endif
 
