@@ -1,8 +1,8 @@
 # --------------- esphttpd config options ---------------
 
-ZMOTE_FIRMWARE_VERSION = "\"0.5.2\""
+ZMOTE_FIRMWARE_VERSION = "\"0.5.3\""
 
-ESP_DEV_HOME = $(abspath $(PWD)/../zmote-toolchain)
+ESP_DEV_HOME  ?= $(abspath $(PWD)/../zmote-toolchain)
 
 ESPTOOL2      ?= $(PWD)/rboot/esptool2/esptool2.exe
 FW_SECTS      = .text .data .rodata
