@@ -41,7 +41,7 @@ typedef struct IrCode_ {
 
 // Rx related globals: Interrupt is not re-entrant (I hope)
 static uint32 *rxTrigger = NULL;
-static uint8 rxTriggerNdx = 0, rxReadNdx = 0;
+static uint16 rxTriggerNdx = 0, rxReadNdx = 0;
 
 static uint16 *rxLastCode = NULL; // in delta us; zero marks the end
 static ETSTimer rxTimer; // Timeout on receive
@@ -57,8 +57,8 @@ static ETSTimer txAbortTimer; // Needed when mutex is unavailable to abort
 // Config variables read at startup (FIXME not done yet)
 static uint32 maxBusyWait = 10000, /* us; timer is used beyond this */
 	minRecvGap = 7000, /*us; two such gaps are needed to recognize complete code */
-	rxTimeout = 500, /* ms; any gap beyonm this is an indication of a new code sequence start */
-	nRecvCodes = 256 /* Number of codes to capture */;
+	rxTimeout = 300, /* ms; any gap beyond this is an indication of a new code sequence start */
+	nRecvCodes = 512 /* Number of codes to capture */;
 static int maxRepeat = 20;
 
 static int  ICACHE_FLASH_ATTR readSeq(uint16 *p, const char *json, jsmntok_t *t)
@@ -427,22 +427,23 @@ static void  (*irLearnCb)(char *) = NULL;
 static void ICACHE_FLASH_ATTR transmitLearnedCode(void)
 {
 	int i, n, big = 0;
-	char sendir[512];
+	char sendir[1024];
 	for (i = 0; i < nRecvCodes && big < 2 && rxLastCode[i]; i++)
 		if (rxLastCode[i] > minRecvGap)
 			++big;
 	DEBUG("Code=%d big=%d", i, big);
-	if (big < 2)
+	if (i < 24)
 		return;
-	DEBUG("Probably got a full sequence");
 	if (!irLearnCb && !irMonitor)
 		return;
 
 	os_sprintf(sendir, "sendir,1:1,0,38400,1,1");
 	for (i = 0; i < nRecvCodes && rxLastCode[i]; i++) {
 		n = os_strlen(sendir);
-		if (n > sizeof(sendir) - 8)
+		if (n > sizeof(sendir) - 8) {
+			WARN("*** sendir overflow!");
 			break;
+		}
 		// 38400/1e6 * 65536 == 2516.58
 		os_sprintf(sendir+n, ",%d", (rxLastCode[i]*2517u + 0x7FFFu)>>16u);
 	}
@@ -462,8 +463,10 @@ static void ICACHE_FLASH_ATTR transmitLearnedCode(void)
 		if (!rxLastCode[i])
 			break;
 		n = os_strlen(sendir);
-		if (n > sizeof(sendir) - 8)
+		if (n > sizeof(sendir) - 36) {
+			WARN("*** sendir overflow!");
 			break;
+		}
 		// 38400/1e6 * 65536 == 2516.58
 		os_sprintf(sendir+n, "%s%u", i?",":"", (rxLastCode[i]*2517u + 0x7FFFu)>>16u);
 	}
@@ -480,7 +483,7 @@ static void ICACHE_FLASH_ATTR transmitLearnedCode(void)
 static void ICACHE_FLASH_ATTR rxMonitor(void)
 {
 	int ncodes, ndx = 0;
-	uint32 lastTS, nextTS;
+	uint32 lastTS, nextTS, rxTriggerNdxLocal;
 
 	//INFO("rxMonitor");
 	if (!GetMutex(&rxMutex)) {
@@ -490,7 +493,8 @@ static void ICACHE_FLASH_ATTR rxMonitor(void)
 	//INFO("Mutex Busy");
 		return;
 	}
-	ncodes = rxTriggerNdx - rxReadNdx;
+	rxTriggerNdxLocal = rxTriggerNdx;
+	ncodes = rxTriggerNdxLocal - rxReadNdx;
 	if (ncodes < 0)
 		ncodes += nRecvCodes; // Modulo arithmetic for circular buffer
 	if (ncodes < 2 ) { // No pulses accumulated
@@ -501,8 +505,8 @@ static void ICACHE_FLASH_ATTR rxMonitor(void)
 	//INFO("No codes %d", ncodes);
 		return;
 	}
-	if (rxTriggerNdx > 0)
-		lastTS = rxTrigger[rxTriggerNdx - 1u];
+	if (rxTriggerNdxLocal > 0)
+		lastTS = rxTrigger[rxTriggerNdxLocal - 1u];
 	else
 		lastTS = rxTrigger[nRecvCodes - 1u];
 	nextTS = system_get_time();
@@ -514,12 +518,11 @@ static void ICACHE_FLASH_ATTR rxMonitor(void)
 	//INFO("No timeout codes=%d", ncodes);
 		return;
 	}
-	INFO("Got codes=%d [%d,%d]", ncodes, rxReadNdx, rxTriggerNdx);
-	lastTS = rxTrigger[rxReadNdx];
-	++rxReadNdx;
+	INFO("Got codes=%d [%d,%d]", ncodes, rxReadNdx, rxTriggerNdxLocal);
+	lastTS = rxTrigger[rxReadNdx++];
 	if (rxReadNdx == nRecvCodes)
 		rxReadNdx = 0;
-	while (rxReadNdx != rxTriggerNdx) {
+	while (rxReadNdx != rxTriggerNdxLocal) {
 		nextTS = rxTrigger[rxReadNdx++];
 		if (rxReadNdx == nRecvCodes)
 			rxReadNdx = 0;
@@ -527,7 +530,7 @@ static void ICACHE_FLASH_ATTR rxMonitor(void)
 		//INFO("    code[%d] = %d", ndx - 1, rxLastCode[ndx-1]);
 		lastTS = nextTS;
 	}
-	rxLastCode[ndx++] = 0; // xero marks the end
+	rxLastCode[ndx++] = 0; // zero marks the end
 	INFO("Got code %d irLearnCb=%x irMonitor=%d", ndx, (uint32)irLearnCb, irMonitor);
 	if (irLearnCb || irMonitor)
 		transmitLearnedCode();
@@ -535,7 +538,7 @@ static void ICACHE_FLASH_ATTR rxMonitor(void)
 	os_timer_disarm(&rxTimer);
 	os_timer_setfn(&rxTimer, (os_timer_func_t *)rxMonitor, 0);
 	os_timer_arm(&rxTimer, rxTimeout, 0);
-	//INFO("Finished [%d,%d]", rxReadNdx, rxTriggerNdx);
+	//INFO("Finished [%d,%d]", rxReadNdx, rxTriggerNdxLocal);
 	return;
 }
 //Cgi that turns the LED on or off according to the 'led' param in the POST data

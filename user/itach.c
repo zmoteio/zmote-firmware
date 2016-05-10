@@ -103,6 +103,7 @@ static void ICACHE_FLASH_ATTR tcpReconCb(void *arg, sint8 err)
 static void ICACHE_FLASH_ATTR tcpDisconCb(void *arg) 
 {
 	INFO("Disconnected");
+	irLearnStop();
 }
 static void ICACHE_FLASH_ATTR tcpSentCb(void *arg) 
 {
